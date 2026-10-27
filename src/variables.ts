@@ -1,15 +1,70 @@
+import type { CompanionVariableDefinitions, CompanionVariableValues } from '@companion-module/base'
 import type ModuleInstance from './main.js'
 
-export type VariablesSchema = {
-	variable1: string
-	variable2: string
-	variable3: string
-}
+// Cue variables (cue_<id>_note, cue_<id>_time) are created dynamically from the active track
+export type VariablesSchema = CompanionVariableValues
 
 export function UpdateVariableDefinitions(self: ModuleInstance): void {
-	self.setVariableDefinitions({
-		variable1: { name: 'My first variable' },
-		variable2: { name: 'My second variable' },
-		variable3: { name: 'Another variable' },
-	})
+	const definitions: CompanionVariableDefinitions<VariablesSchema> = {
+		connected: { name: 'Connected to Designer (true/false)' },
+		project: { name: 'Project path' },
+		version: { name: 'Designer version' },
+		transport: { name: 'Active transport name' },
+		playmode: { name: 'Playmode of the active transport (Play, PlaySection, Loop, Stop)' },
+		engaged: { name: 'Active transport engaged (true/false)' },
+		track: { name: 'Current track name' },
+		track_uid: { name: 'Current track uid' },
+		cue_count: { name: 'Number of cues on the current track' },
+		cue_list: { name: 'Cues on the current track (comma separated)' },
+		last_cue: { name: 'Last cue triggered from Companion' },
+		last_cue_note: { name: 'Note of the last cue triggered from Companion' },
+	}
+
+	for (const cue of self.state.cues) {
+		definitions[`cue_${cue.varId}_note`] = { name: `Cue ${cue.id}: note` }
+		definitions[`cue_${cue.varId}_time`] = { name: `Cue ${cue.id}: time in track (s)` }
+	}
+
+	self.setVariableDefinitions(definitions)
+	sentValues.delete(self)
 }
+
+export function UpdateVariableValues(self: ModuleInstance): void {
+	const s = self.state
+	const lastCue = s.cues.find((c) => c.id === s.lastCue)
+	const values: CompanionVariableValues = {
+		connected: s.connected,
+		project: s.project,
+		version: s.version,
+		transport: s.transport,
+		playmode: s.playmode,
+		engaged: s.engaged,
+		track: s.trackName,
+		track_uid: s.trackUid,
+		cue_count: s.cues.length,
+		cue_list: s.cues.map((c) => c.id).join(', '),
+		last_cue: s.lastCue,
+		last_cue_note: lastCue?.note ?? '',
+	}
+
+	for (const cue of s.cues) {
+		values[`cue_${cue.varId}_note`] = cue.note
+		values[`cue_${cue.varId}_time`] = Math.round(cue.time * 1000) / 1000
+	}
+
+	// Only send what changed - this runs on every poll
+	const sent = sentValues.get(self) ?? {}
+	const changed: CompanionVariableValues = {}
+	let hasChanges = false
+	for (const [id, value] of Object.entries(values)) {
+		if (sent[id] !== value) {
+			changed[id] = value
+			sent[id] = value
+			hasChanges = true
+		}
+	}
+	sentValues.set(self, sent)
+	if (hasChanges) self.setVariableValues(changed)
+}
+
+const sentValues = new WeakMap<ModuleInstance, CompanionVariableValues>()
