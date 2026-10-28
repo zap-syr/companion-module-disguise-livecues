@@ -6,7 +6,12 @@ import {
 	GetConfigFields,
 	type ModuleConfig,
 } from './config.js'
-import { UpdateVariableDefinitions, UpdateVariableValues, type VariablesSchema } from './variables.js'
+import {
+	UpdatePlayheadVariableValues,
+	UpdateVariableDefinitions,
+	UpdateVariableValues,
+	type VariablesSchema,
+} from './variables.js'
 import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions, type ActionsSchema } from './actions.js'
 import { UpdateFeedbacks, type FeedbacksSchema } from './feedbacks.js'
@@ -49,7 +54,25 @@ export interface Cue {
 export interface TrackCues {
 	uid: string
 	name: string
+	/** Sorted by time */
 	cues: Cue[]
+}
+
+/** Live position of a transport in use, from its Live Update playhead subscription */
+export interface TransportPlayhead {
+	uid: string
+	name: string
+	/** Transport name usable inside variable ids */
+	varId: string
+	trackUid: string
+	trackName: string
+	/** Seconds from the start of the track */
+	time: number
+	/** Project refresh rate, used for timecode and the cue time tolerance */
+	fps: number
+	/** Last cue at or before the playhead */
+	cue?: Cue
+	nextCue?: Cue
 }
 
 export interface DisguiseState {
@@ -69,11 +92,21 @@ export interface DisguiseState {
 	cues: Cue[]
 	/** Local time of the last cue list update */
 	cueListUpdated: string
+	/** One entry per transport in use, same order as `transports` */
+	playheads: TransportPlayhead[]
 	lastCue: string
 }
 
 const MAX_RETRY_DELAY = 5000
 const CUE_LIST_SUBSCRIPTION = 'cueList'
+const PLAYHEAD_SUBSCRIPTION = 'playhead:'
+/** Playhead updates from Designer - fast enough for the cue highlight, light on Designer */
+const PLAYHEAD_UPDATE_MS = 150
+/** Time variables are refreshed at most this often (cue changes are applied immediately) */
+const TIME_VARIABLES_MS = 250
+/** [track uid, seconds, refresh rate] of a transport (arrays only - see CUE_LIST_EXPRESSION) */
+const PLAYHEAD_EXPRESSION =
+	'[str(object.player.track.uid), object.player.track.beatToTime(object.player.tRender), state.globalRefreshRate.asDouble]'
 
 function emptyState(): DisguiseState {
 	return {
@@ -89,6 +122,7 @@ function emptyState(): DisguiseState {
 		tracks: [],
 		cues: [],
 		cueListUpdated: '',
+		playheads: [],
 		lastCue: '',
 	}
 }
@@ -110,6 +144,10 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	/** Signature of the cue ids the variable definitions were built from */
 	private variableSignature = ''
 	private tracksSignature = ''
+	private transportsSignature = ''
+	/** Transport uids with a playhead subscription */
+	private playheadSubscriptions = new Set<string>()
+	private lastTimeVariablesUpdate = 0
 
 	constructor(internal: unknown) {
 		super(internal)
@@ -138,6 +176,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		this.presetSignature = ''
 		this.variableSignature = ''
 		this.tracksSignature = ''
+		this.transportsSignature = ''
 		// The label may have changed - presets reference variables through it
 		this.updateActions()
 		this.updateVariableDefinitions()
@@ -269,9 +308,9 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		this.state.trackUid = transport?.currentTrack?.uid ?? ''
 		this.state.trackName = transport?.currentTrack?.name ?? ''
 
-		if (this.cueAutoUpdate) {
-			this.ensureLiveUpdate(api)
-		} else if (!wasConnected) {
+		// Live Update is always needed for the playheads; the cue list subscription only in automatic mode
+		this.ensureLiveUpdate(api)
+		if (!this.cueAutoUpdate && !wasConnected) {
 			// Manual mode: read the cue list once per connection, then only on "Refresh cue list".
 			// Only a lost connection fails the poll; a script error is logged and the list stays empty.
 			await this.loadCueList(api).catch((e: Error) => {
@@ -306,11 +345,9 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	/** Ok, or a warning while REST works but the Live Update socket the module needs does not */
 	private updateConnectionStatus(): void {
 		if (!this.state.connected) return
-		if (this.cueAutoUpdate && this.liveUpdateError) {
-			this.setStatus(
-				InstanceStatus.UnknownWarning,
-				`Live Update ${this.liveUpdateError} - automatic cue list updates paused`,
-			)
+		if (this.liveUpdateError) {
+			const paused = this.cueAutoUpdate ? 'cue highlight and automatic cue list updates' : 'cue highlight'
+			this.setStatus(InstanceStatus.UnknownWarning, `Live Update ${this.liveUpdateError} - ${paused} paused`)
 		} else {
 			this.setStatus(InstanceStatus.Ok)
 		}
@@ -348,26 +385,110 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 		this.liveUpdate.connect()
 
-		// Any resolvable object will do as the subscription anchor - use the first transport in use
+		// Any resolvable object will do as the cue list anchor - use the first transport in use
 		const anchor = this.state.transports[0]?.name
-		if (!anchor) return
-		const interval = Math.min(10000, Math.max(1000, this.config.cueUpdateInterval || DEFAULT_CUE_UPDATE_INTERVAL))
-		this.liveUpdate.subscribe(
-			CUE_LIST_SUBSCRIPTION,
-			transportObjectPath(anchor),
-			CUE_LIST_EXPRESSION,
-			(value) => this.setCueList(value),
-			{
-				updateFrequencyMs: interval,
-				onError: (message) => this.log('warn', `Cue list subscription failed: ${message}`),
-			},
-		)
+		if (this.cueAutoUpdate && anchor) {
+			const interval = Math.min(10000, Math.max(1000, this.config.cueUpdateInterval || DEFAULT_CUE_UPDATE_INTERVAL))
+			this.liveUpdate.subscribe(
+				CUE_LIST_SUBSCRIPTION,
+				transportObjectPath(anchor),
+				CUE_LIST_EXPRESSION,
+				(value) => this.setCueList(value),
+				{
+					updateFrequencyMs: interval,
+					onError: (message) => this.log('warn', `Cue list subscription failed: ${message}`),
+				},
+			)
+		}
+
+		this.syncPlayheads()
+	}
+
+	/** One playhead subscription per transport in use (one transport, or the children of a multi-transport) */
+	private syncPlayheads(): void {
+		const client = this.liveUpdate
+		if (!client) return
+		const transports = this.state.transports
+
+		for (const uid of this.playheadSubscriptions) {
+			if (transports.some((t) => t.uid === uid)) continue
+			client.unsubscribe(PLAYHEAD_SUBSCRIPTION + uid)
+			this.playheadSubscriptions.delete(uid)
+		}
+
+		const previous = new Map(this.state.playheads.map((p) => [p.uid, p]))
+		this.state.playheads = transports.map((t) => {
+			const playhead: TransportPlayhead = previous.get(t.uid) ?? {
+				uid: t.uid,
+				name: t.name,
+				varId: '',
+				trackUid: t.currentTrack?.uid ?? '',
+				trackName: t.currentTrack?.name ?? '',
+				time: 0,
+				fps: 0,
+			}
+			playhead.name = t.name
+			playhead.varId = t.name.replace(/[^A-Za-z0-9]/g, '_')
+
+			// Re-subscribing with the same object + property is a no-op; a renamed transport gets a new subscription
+			client.subscribe(
+				PLAYHEAD_SUBSCRIPTION + t.uid,
+				transportObjectPath(t.name),
+				PLAYHEAD_EXPRESSION,
+				(value) => this.setPlayhead(t.uid, value),
+				{
+					updateFrequencyMs: PLAYHEAD_UPDATE_MS,
+					onError: (message) => this.log('warn', `Playhead of transport "${t.name}" unavailable: ${message}`),
+				},
+			)
+			this.playheadSubscriptions.add(t.uid)
+			return playhead
+		})
+	}
+
+	private setPlayhead(uid: string, value: unknown): void {
+		const playhead = this.state.playheads.find((p) => p.uid === uid)
+		if (!playhead || !Array.isArray(value)) return
+		const [trackUid, time, fps] = value as [string | null, number | null, number | null]
+		playhead.trackUid = trackUid ?? ''
+		playhead.time = Number(time) || 0
+		playhead.fps = Number(fps) || playhead.fps
+
+		if (this.updateCurrentCue(playhead)) {
+			this.lastTimeVariablesUpdate = Date.now()
+			UpdatePlayheadVariableValues(this)
+			this.checkFeedbacks('cue_active', 'cue_next')
+		} else if (Date.now() - this.lastTimeVariablesUpdate >= TIME_VARIABLES_MS) {
+			this.lastTimeVariablesUpdate = Date.now()
+			UpdatePlayheadVariableValues(this)
+		}
+	}
+
+	/** Find the current and next cue of a transport; returns true when they (or its track) changed */
+	private updateCurrentCue(playhead: TransportPlayhead): boolean {
+		const track = this.state.tracks.find((t) => t.uid === playhead.trackUid)
+		const cues = track?.cues ?? []
+		// Half a frame of tolerance: a jump to a cue lands on its time up to float noise
+		const tolerance = playhead.fps > 0 ? 0.5 / playhead.fps : 0.01
+		let index = -1
+		while (index + 1 < cues.length && cues[index + 1].time <= playhead.time + tolerance) index++
+
+		const cue = cues[index]
+		const nextCue = cues[index + 1]
+		const trackName = track?.name ?? this.state.transports.find((t) => t.uid === playhead.uid)?.currentTrack?.name ?? ''
+		const changed = cue !== playhead.cue || nextCue !== playhead.nextCue || trackName !== playhead.trackName
+		playhead.cue = cue
+		playhead.nextCue = nextCue
+		playhead.trackName = trackName
+		return changed
 	}
 
 	private closeLiveUpdate(): void {
 		this.liveUpdate?.destroy()
 		this.liveUpdate = null
 		this.liveUpdateError = ''
+		this.playheadSubscriptions.clear()
+		this.state.playheads = []
 	}
 
 	// --- Cue list ---
@@ -414,6 +535,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 					trackName: track.name,
 				})
 			}
+			track.cues.sort((a, b) => a.time - b.time)
 			tracks.push(track)
 		}
 
@@ -442,8 +564,15 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		const presetSignature = JSON.stringify(
 			this.state.tracks.map((t) => [t.uid, t.name, t.cues.map((c) => [c.id, c.note])]),
 		)
-		const variableSignature = JSON.stringify(this.state.cues.map((c) => c.varId))
+		const variableSignature = JSON.stringify([
+			this.state.cues.map((c) => c.varId),
+			this.state.playheads.map((p) => p.varId),
+		])
 		const tracksSignature = JSON.stringify(this.state.tracks.map((t) => t.name))
+		const transportsSignature = JSON.stringify(this.state.transports.map((t) => t.name))
+
+		// The cue list or the transports may have changed - re-evaluate every playhead
+		for (const playhead of this.state.playheads) this.updateCurrentCue(playhead)
 
 		if (variableSignature !== this.variableSignature) {
 			this.variableSignature = variableSignature
@@ -454,6 +583,11 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		if (tracksSignature !== this.tracksSignature) {
 			this.tracksSignature = tracksSignature
 			this.updateActions() // the track dropdown lists the project tracks
+		}
+
+		if (transportsSignature !== this.transportsSignature) {
+			this.transportsSignature = transportsSignature
+			this.updateFeedbacks() // the transport dropdowns list the transports in use
 		}
 
 		if (presetSignature !== this.presetSignature) {
@@ -467,7 +601,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			this.updatePresets()
 		}
 
-		this.checkFeedbacks('connected', 'playmode', 'cue_active')
+		this.checkFeedbacks('connected', 'playmode', 'cue_active', 'cue_next', 'cue_last_triggered')
 	}
 
 	/**
@@ -499,10 +633,10 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 	}
 
-	/** Remember the cue triggered from Companion (until the playhead is tracked via Live Update) */
+	/** Remember the last cue triggered from Companion (independent of the playhead) */
 	setLastCue(cue: string): void {
 		this.state.lastCue = cue
 		UpdateVariableValues(this)
-		this.checkFeedbacks('cue_active')
+		this.checkFeedbacks('cue_last_triggered')
 	}
 }

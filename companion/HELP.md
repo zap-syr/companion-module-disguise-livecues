@@ -34,19 +34,40 @@ websocket is down. The module keeps retrying and reconnects on its own.
 
 - **Cues** - one group per track, one button per CUE tag: the note on the top, `CUE <n>` below
   (only `CUE <n>` when the cue has no note). Rebuilt automatically when cues are added, removed or
-  edited; notes on already placed buttons follow edits in Designer through variables.
+  edited; notes on already placed buttons follow edits in Designer through variables. A button
+  turns dark green while its cue is the current cue of any transport and dark yellow while it is
+  the next cue.
 - **Transport** - Play / Section / Loop / Stop / Start / Next / Previous, lit by the playmode.
-- **Status** - connection, current track and playmode, last triggered cue, refresh cue list.
+- **Status** - connection, current track and playmode, current and next cue, last triggered cue,
+  refresh cue list.
+
+### Cue highlight
+
+The module follows the playhead of every transport in use through Live Update - one transport, or
+every transport of the selected multi-transport. The current cue of a transport is the last cue at
+or before its playhead, so cues started in Designer, by timecode or by another controller are
+highlighted too.
 
 ### Feedbacks
 
 - **Connected to Designer**
 - **Playmode of the active transport**
-- **Cue is the last triggered cue** (cues triggered from Companion)
+- **Cue is current (playhead)** - for any transport or a selected one
+- **Cue is next (playhead)** - for any transport or a selected one
+- **Cue is the last triggered from Companion**
 
 ### Variables
 
 `connected`, `project`, `version`, `transport`, `playmode`, `engaged`, `track`, `track_uid`,
 `cue_count` / `cue_list` (current track), `cue_count_total`, `track_count`, `cue_list_updated`,
-`last_cue`, `last_cue_note` and per cue `cue_<n>_note`, `cue_<n>_time`, `cue_<n>_track`
-(dots in cue numbers become `_`, e.g. `cue_1_2_note`).
+`last_cue`, `last_cue_note`.
+
+Playhead of the first transport in use: `current_cue`, `current_cue_note`, `next_cue`,
+`next_cue_note`, `current_time`.
+
+Per transport in use (`<transport>` = its name, non-alphanumeric characters as `_`):
+`tr_<transport>_track`, `_cue`, `_cue_note`, `_next_cue`, `_next_cue_note`, `_time`,
+`_time_to_next` (times as `HH:MM:SS:FF` at the project refresh rate).
+
+Per cue: `cue_<n>_note`, `cue_<n>_time`, `cue_<n>_track` (dots in cue numbers become `_`, e.g.
+`cue_1_2_note`).

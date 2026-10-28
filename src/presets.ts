@@ -1,6 +1,7 @@
 import type { ModuleSchema } from './main.js'
 import type ModuleInstance from './main.js'
 import type { Cue } from './main.js'
+import { ANY_TRANSPORT, CUE_CURRENT_COLOR, CUE_NEXT_COLOR } from './feedbacks.js'
 import type {
 	CompanionButtonStepActions,
 	CompanionPresetDefinitions,
@@ -12,7 +13,6 @@ import type {
 const WHITE = 0xffffff
 const BLACK = 0x000000
 const GREEN = 0x00a000
-const ORANGE = 0xc08000
 const RED = 0xa00000
 const GREY = 0x303030
 
@@ -101,12 +101,25 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 				name,
 				elements,
 				steps,
+				// Later feedbacks win: "current" is applied after "next" (a cue can be next on one transport
+				// and current on another)
 				feedbacks: [
 					{
-						feedbackId: 'cue_active',
-						options: { cue: cue.id },
+						feedbackId: 'cue_next',
+						options: { cue: cue.id, transport: ANY_TRANSPORT },
 						styleOverrides: [
-							{ elementId: 'bg', elementProperty: 'color', override: { isExpression: false, value: ORANGE } },
+							{ elementId: 'bg', elementProperty: 'color', override: { isExpression: false, value: CUE_NEXT_COLOR } },
+						],
+					},
+					{
+						feedbackId: 'cue_active',
+						options: { cue: cue.id, transport: ANY_TRANSPORT },
+						styleOverrides: [
+							{
+								elementId: 'bg',
+								elementProperty: 'color',
+								override: { isExpression: false, value: CUE_CURRENT_COLOR },
+							},
 						],
 					},
 				],
@@ -121,7 +134,18 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 					bgcolor: BLACK,
 				},
 				steps,
-				feedbacks: [{ feedbackId: 'cue_active', options: { cue: cue.id }, style: { bgcolor: ORANGE, color: WHITE } }],
+				feedbacks: [
+					{
+						feedbackId: 'cue_next',
+						options: { cue: cue.id, transport: ANY_TRANSPORT },
+						style: { bgcolor: CUE_NEXT_COLOR, color: WHITE },
+					},
+					{
+						feedbackId: 'cue_active',
+						options: { cue: cue.id, transport: ANY_TRANSPORT },
+						style: { bgcolor: CUE_CURRENT_COLOR, color: WHITE },
+					},
+				],
 			},
 		],
 	}
@@ -241,6 +265,30 @@ export function UpdatePresets(self: ModuleInstance): void {
 		feedbacks: [],
 	}
 
+	presets['status_current_cue'] = {
+		type: 'simple',
+		name: 'Current cue (playhead of the first transport in use)',
+		style: {
+			text: `NOW $(${label}:current_cue)\n$(${label}:current_cue_note)\n$(${label}:current_time)`,
+			size: 'auto',
+			color: WHITE,
+			bgcolor: GREY,
+		},
+		steps: [],
+		feedbacks: [],
+	}
+	presets['status_next_cue'] = {
+		type: 'simple',
+		name: 'Next cue (first transport in use)',
+		style: {
+			text: `NEXT $(${label}:next_cue)\n$(${label}:next_cue_note)`,
+			size: 'auto',
+			color: WHITE,
+			bgcolor: GREY,
+		},
+		steps: [],
+		feedbacks: [],
+	}
 	presets['status_refresh'] = {
 		type: 'simple',
 		name: 'Refresh cue list',
@@ -280,7 +328,14 @@ export function UpdatePresets(self: ModuleInstance): void {
 					id: 'status_buttons',
 					name: 'Status',
 					type: 'simple',
-					presets: ['status_connection', 'status_track', 'status_last_cue', 'status_refresh'],
+					presets: [
+						'status_connection',
+						'status_track',
+						'status_current_cue',
+						'status_next_cue',
+						'status_last_cue',
+						'status_refresh',
+					],
 				},
 			],
 		},

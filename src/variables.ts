@@ -1,8 +1,20 @@
 import type { CompanionVariableDefinitions, CompanionVariableValues } from '@companion-module/base'
 import type ModuleInstance from './main.js'
+import type { TransportPlayhead } from './main.js'
 
-// Cue variables (cue_<id>_note, cue_<id>_time, cue_<id>_track) are created dynamically for every cue of the project
+// Created dynamically: per cue (cue_<id>_note, cue_<id>_time, cue_<id>_track) for every cue of the
+// project, and per transport in use (tr_<transport>_...) from its Live Update playhead
 export type VariablesSchema = CompanionVariableValues
+
+const PLAYHEAD_VARIABLES: [suffix: string, name: string][] = [
+	['track', 'current track'],
+	['cue', 'current cue'],
+	['cue_note', 'note of the current cue'],
+	['next_cue', 'next cue'],
+	['next_cue_note', 'note of the next cue'],
+	['time', 'playhead (HH:MM:SS:FF)'],
+	['time_to_next', 'time to the next cue (HH:MM:SS:FF)'],
+]
 
 export function UpdateVariableDefinitions(self: ModuleInstance): void {
 	const definitions: CompanionVariableDefinitions<VariablesSchema> = {
@@ -21,6 +33,17 @@ export function UpdateVariableDefinitions(self: ModuleInstance): void {
 		cue_list_updated: { name: 'Time of the last cue list update' },
 		last_cue: { name: 'Last cue triggered from Companion' },
 		last_cue_note: { name: 'Note of the last cue triggered from Companion' },
+		current_cue: { name: 'Current cue of the first transport in use' },
+		current_cue_note: { name: 'Note of the current cue of the first transport in use' },
+		next_cue: { name: 'Next cue of the first transport in use' },
+		next_cue_note: { name: 'Note of the next cue of the first transport in use' },
+		current_time: { name: 'Playhead of the first transport in use (HH:MM:SS:FF)' },
+	}
+
+	for (const playhead of self.state.playheads) {
+		for (const [suffix, name] of PLAYHEAD_VARIABLES) {
+			definitions[`tr_${playhead.varId}_${suffix}`] = { name: `Transport ${playhead.name}: ${name}` }
+		}
 	}
 
 	for (const cue of self.state.cues) {
@@ -53,6 +76,7 @@ export function UpdateVariableValues(self: ModuleInstance): void {
 		cue_list_updated: s.cueListUpdated,
 		last_cue: s.lastCue,
 		last_cue_note: lastCue?.note ?? '',
+		...playheadValues(self),
 	}
 
 	for (const cue of s.cues) {
@@ -61,7 +85,46 @@ export function UpdateVariableValues(self: ModuleInstance): void {
 		values[`cue_${cue.varId}_track`] = cue.trackName
 	}
 
-	// Only send what changed - this runs on every poll
+	sendChanged(self, values)
+}
+
+/** Only the playhead variables - called on Live Update playhead changes */
+export function UpdatePlayheadVariableValues(self: ModuleInstance): void {
+	sendChanged(self, playheadValues(self))
+}
+
+function playheadValues(self: ModuleInstance): CompanionVariableValues {
+	const values: CompanionVariableValues = {}
+	for (const p of self.state.playheads) {
+		values[`tr_${p.varId}_track`] = p.trackName
+		values[`tr_${p.varId}_cue`] = p.cue?.id ?? ''
+		values[`tr_${p.varId}_cue_note`] = p.cue?.note ?? ''
+		values[`tr_${p.varId}_next_cue`] = p.nextCue?.id ?? ''
+		values[`tr_${p.varId}_next_cue_note`] = p.nextCue?.note ?? ''
+		values[`tr_${p.varId}_time`] = formatTimecode(p.time, p.fps)
+		values[`tr_${p.varId}_time_to_next`] = p.nextCue ? formatTimecode(p.nextCue.time - p.time, p.fps) : ''
+	}
+	const first: TransportPlayhead | undefined = self.state.playheads[0]
+	values.current_cue = first?.cue?.id ?? ''
+	values.current_cue_note = first?.cue?.note ?? ''
+	values.next_cue = first?.nextCue?.id ?? ''
+	values.next_cue_note = first?.nextCue?.note ?? ''
+	values.current_time = first ? formatTimecode(first.time, first.fps) : ''
+	return values
+}
+
+/** Seconds -> HH:MM:SS:FF at the project refresh rate */
+export function formatTimecode(seconds: number, fps: number): string {
+	const rate = fps > 0 ? Math.round(fps) : 25
+	const totalFrames = Math.max(0, Math.floor(seconds * rate + 1e-6))
+	const frames = totalFrames % rate
+	const totalSeconds = Math.floor(totalFrames / rate)
+	const pad = (n: number) => String(n).padStart(2, '0')
+	return `${pad(Math.floor(totalSeconds / 3600))}:${pad(Math.floor(totalSeconds / 60) % 60)}:${pad(totalSeconds % 60)}:${pad(frames)}`
+}
+
+/** Send only values that changed since the last call */
+function sendChanged(self: ModuleInstance, values: CompanionVariableValues): void {
 	const sent = sentValues.get(self) ?? {}
 	const changed: CompanionVariableValues = {}
 	let hasChanges = false

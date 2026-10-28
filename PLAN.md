@@ -94,7 +94,8 @@ Live Update:
   - cue without a note: only `CUE <n>` on the whole button;
   - the note comes from the `cue_<n>_note` variable, so buttons already placed update
     their note by themselves when it is edited in Designer;
-  - a full-size background box (`bg`) that the "cue active" feedback turns orange.
+  - a full-size background box (`bg`) that the "cue active" feedback colours (since 5b:
+    dark green `#006600` for the current cue, dark yellow `#663300` for the next cue).
 - Wrapped in an `alternatives` preset with a `simple` fallback (note + `CUE <n>` as text)
   for hosts without layered buttons (Bitfocus Buttons).
 - Cue presets run Go to cue with playmode "Play to end of section" (`PlaySection`).
@@ -152,7 +153,15 @@ first one returned by `activetransport` (`1001`).
   Presets and variable definitions are rebuilt only when the signature changes.
 - The track dropdown of Go to track is built from the same data.
 
-### Stage 5b. Playhead per transport → current cue highlight - TODO
+### Stage 5b. Playhead per transport → current cue highlight - ✅
+
+Implemented in `src/main.ts` (`syncPlayheads`, `setPlayhead`, `updateCurrentCue`),
+`src/variables.ts`, `src/feedbacks.ts`, `src/presets.ts`. The playhead property also returns
+the project refresh rate: `[str(track uid), seconds, state.globalRefreshRate.asDouble]`.
+Live Update is now always connected (also with automatic cue list updates off).
+Verified with a 3-transport multi-transport (`1002`, `1001`, `default`): a jump lands exactly on
+the cue time (float noise only); during playback the current cue switched 3 → 4 when the
+playhead crossed 105 s. Not yet verified: transport names with special characters.
 
 - On every REST poll compare the transports returned by `activetransport` with the
   subscribed ones; subscribe new ones, unsubscribe removed ones (works the same for a
