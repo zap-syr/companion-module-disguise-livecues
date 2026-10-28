@@ -230,11 +230,54 @@ rebuild presets.
   one **Set playmode** action (`set_playmode`: playmode + transport). No upgrade script -
   existing buttons are re-created by hand (module not released yet).
 
-### Stage 6. Optimisation - TODO
+### Stage 6. Transport state via Live Update, lighter polling, presets per transport - ✅ (verified in Companion)
 
-- Read playmode and current track from Live Update too; keep the REST poll as a heartbeat
-  and transport-list check only, at a lower rate.
-- Optional transport presets per transport (multi-transport setups).
+Implemented in `src/main.ts` (playhead expression, `parsePlaymode`, `playmodeOf`,
+`transportName`), `src/feedbacks.ts`, `src/variables.ts`, `src/presets.ts`, `src/config.ts`.
+Verified: an external play command on `1001` (sent straight to Designer) reached the
+Companion variables in ~0.5 s (measured including the HTTP polling of the test itself);
+holding at the end of a section shows as `HoldSection` / `playing = false`.
+
+Today the playmode, engaged state and current track come from the REST poll of
+`activetransport` (every 1000 ms by default), so playmode feedback lags up to 1 s for
+commands given outside Companion.
+
+#### 6.1 Playmode and playback state from Live Update
+
+- Extend the per-transport playhead subscription (arrays only) with the playback state.
+  Verified on r34.2.2:
+  - `str(object.player.playMode)` → `Play`, `PlaySection`, `LoopSection`, `Stop`,
+    `HoldSection`, `HoldEnd` (the raw value is a `PlayMode` struct `{"state": n}`;
+    `int()` on it fails, `str()` works);
+  - `object.player.playing` → whether playback is actually running;
+  - `object.engaged`, `object.player.speed`.
+  - Example: at the end of a played section REST reports `PlaySection`, Live Update reports
+    `HoldSection` with `playing = false`.
+- Playmode feedback and variables then follow within ~150 ms, also for commands given in
+  Designer or by another controller.
+- New per-transport variables: `tr_<t>_playmode`, `tr_<t>_playing` (and `playing` for the
+  selected transport); `playmode` uses the Live Update value when available.
+- Playmode feedback:
+  - new choices **Hold section** and **Hold end** as separate values (not merged into
+    "Play to end of section" / "Play");
+  - new **Transport** option: `Current` (default) or a transport name.
+- New feedback **Transport is playing** (Transport option as above).
+
+#### 6.2 Lighter REST polling
+
+- The REST poll keeps only what Live Update does not provide: the transports in use
+  (switching between a single transport and a multi-transport), setlists, and the
+  connection heartbeat. Commands from Companion still trigger an immediate poll.
+- Default **Polling interval** raised from 1000 to **2000 ms** (new connections; an existing
+  config keeps its value).
+
+#### 6.3 Transport presets per transport
+
+- In the **Transport** section, besides the existing group (transport `Current`), one group
+  per transport in use: `Transport - <name>` with PLAY / SECTION / LOOP / STOP / START /
+  SECTION ◀▶ / TRACK ◀▶ bound to that transport, lit by its own playmode, plus a status
+  button (track, current cue, time) of that transport.
+- Groups follow the transports in use; presets are rebuilt only when that list changes.
 
 ### Stage 7. Documentation and release - partial
 

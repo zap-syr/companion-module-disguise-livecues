@@ -1,6 +1,6 @@
 import type { ModuleSchema } from './main.js'
 import type ModuleInstance from './main.js'
-import { TRANSPORT_AUTO, TRANSPORT_CURRENT, type Cue } from './main.js'
+import { TRANSPORT_AUTO, TRANSPORT_CURRENT, transportVarId, type Cue } from './main.js'
 import { ANY_TRANSPORT, CUE_CURRENT_COLOR, CUE_NEXT_COLOR } from './feedbacks.js'
 import type {
 	CompanionButtonStepActions,
@@ -206,39 +206,85 @@ export function UpdatePresets(self: ModuleInstance): void {
 		['prev_track', 'TRACK\n◀', 'prev_track'],
 		['next_track', 'TRACK\n▶', 'next_track'],
 	]
-	const transportPresetIds: string[] = []
-	for (const [id, text, actionId, playmode] of transportButtons) {
-		const presetId = `transport_${id}`
-		transportPresetIds.push(presetId)
-		presets[presetId] = {
+	/** Transport buttons bound to `transport` ("current" or a transport name); returns their preset ids */
+	const addTransportButtons = (idPrefix: string, transport: string, nameSuffix: string): string[] => {
+		const ids: string[] = []
+		for (const [id, text, actionId, playmode] of transportButtons) {
+			const presetId = `${idPrefix}_${id}`
+			ids.push(presetId)
+			presets[presetId] = {
+				type: 'simple',
+				name: text.replace('\n', ' ') + nameSuffix,
+				style: { text, size: 'auto', color: WHITE, bgcolor: BLACK },
+				steps: [
+					{
+						down: [
+							{
+								actionId,
+								options: playmode
+									? { playmode, transport }
+									: actionId.includes('_section') || actionId.includes('_track')
+										? { transport, playmode: 'NotSet' }
+										: { transport },
+							},
+						],
+						up: [],
+					},
+				],
+				feedbacks: playmode
+					? [
+							{
+								feedbackId: 'playmode',
+								options: { playmode, transport },
+								style: { bgcolor: playmode === 'Stop' ? RED : GREEN, color: WHITE },
+							},
+						]
+					: [],
+			} as PresetDefinition
+		}
+		return ids
+	}
+
+	const transportGroups: CompanionPresetGroup[] = [
+		{
+			id: 'transport_buttons',
+			name: 'Transport (selected in Designer)',
+			description: 'Act on the transport selected in Designer (multi-transport: the selected timeline)',
 			type: 'simple',
-			name: text.replace('\n', ' '),
-			style: { text, size: 'auto', color: WHITE, bgcolor: BLACK },
-			steps: [
+			presets: addTransportButtons('transport', TRANSPORT_CURRENT, ''),
+		},
+	]
+
+	// One group per transport in use (a multi-transport has several), with its own status button
+	for (const transport of self.state.transports) {
+		const varId = transportVarId(transport.name)
+		const prefix = `transport_tr_${varId}`
+		const ids = addTransportButtons(prefix, transport.name, ` (${transport.name})`)
+		presets[`${prefix}_status`] = {
+			type: 'simple',
+			name: `Status of transport ${transport.name}`,
+			style: {
+				text: `${transport.name}: $(${label}:tr_${varId}_track)\nCUE $(${label}:tr_${varId}_cue)\n$(${label}:tr_${varId}_time)`,
+				size: 'auto',
+				color: WHITE,
+				bgcolor: GREY,
+			},
+			steps: [],
+			feedbacks: [
 				{
-					down: [
-						{
-							actionId,
-							options: playmode
-								? { playmode, transport: TRANSPORT_CURRENT }
-								: actionId.includes('_section') || actionId.includes('_track')
-									? { transport: TRANSPORT_CURRENT, playmode: 'NotSet' }
-									: { transport: TRANSPORT_CURRENT },
-						},
-					],
-					up: [],
+					feedbackId: 'playing',
+					options: { transport: transport.name },
+					style: { bgcolor: GREEN, color: WHITE },
 				},
 			],
-			feedbacks: playmode
-				? [
-						{
-							feedbackId: 'playmode',
-							options: { playmode },
-							style: { bgcolor: playmode === 'Stop' ? RED : GREEN, color: WHITE },
-						},
-					]
-				: [],
-		} as PresetDefinition
+		}
+		transportGroups.push({
+			id: `transport_tr_${varId}`,
+			name: `Transport - ${transport.name}`,
+			description: `Act on transport "${transport.name}"`,
+			type: 'simple',
+			presets: [`${prefix}_status`, ...ids],
+		})
 	}
 
 	// --- Status ---
@@ -308,14 +354,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 		{
 			id: 'transport',
 			name: 'Transport',
-			definitions: [
-				{
-					id: 'transport_buttons',
-					name: 'Transport',
-					type: 'simple',
-					presets: transportPresetIds,
-				},
-			],
+			definitions: transportGroups,
 		},
 		{
 			id: 'status',

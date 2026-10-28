@@ -1,6 +1,6 @@
 import type { CompanionFeedbackDefinitions, DropdownChoice } from '@companion-module/base'
 import type ModuleInstance from './main.js'
-import type { ModuleSchema, TransportPlayhead } from './main.js'
+import { TRANSPORT_CURRENT, type ModuleSchema, type TransportPlayhead, type TransportPlaymode } from './main.js'
 
 export const ANY_TRANSPORT = 'any'
 /** Dark green - the cue under the playhead */
@@ -16,7 +16,14 @@ export type FeedbacksSchema = {
 	playmode: {
 		type: 'boolean'
 		options: {
-			playmode: 'Play' | 'PlaySection' | 'Loop' | 'Stop'
+			playmode: Exclude<TransportPlaymode, ''>
+			transport: string
+		}
+	}
+	playing: {
+		type: 'boolean'
+		options: {
+			transport: string
 		}
 	}
 	cue_active: {
@@ -55,6 +62,20 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 		allowCustom: true,
 	} as const
 
+	/** Transport of the playmode / playing feedbacks: the selected one in Designer (default) or a name */
+	const currentTransportChoices: DropdownChoice[] = [
+		{ id: TRANSPORT_CURRENT, label: 'Current (selected in Designer)' },
+		...self.state.transports.map((t) => ({ id: t.name, label: t.name })),
+	]
+	const currentTransportOption = {
+		id: 'transport',
+		type: 'dropdown',
+		label: 'Transport',
+		choices: currentTransportChoices,
+		default: TRANSPORT_CURRENT,
+		allowCustom: true,
+	} as const
+
 	/** Playheads of the selected transport (or all of them); options from older buttons may lack it */
 	const playheadsFor = (transport: string | undefined): TransportPlayhead[] => {
 		const name = String(transport ?? ANY_TRANSPORT).trim()
@@ -75,7 +96,9 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 			callback: () => self.state.connected,
 		},
 		playmode: {
-			name: 'Playmode of the active transport',
+			name: 'Playmode of a transport',
+			description:
+				'Hold section / Hold end: the transport finished a section / the track and holds (reported live by Designer)',
 			type: 'boolean',
 			defaultStyle: {
 				bgcolor: 0x00a000,
@@ -91,12 +114,31 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 						{ id: 'PlaySection', label: 'Play to end of section' },
 						{ id: 'Loop', label: 'Loop section' },
 						{ id: 'Stop', label: 'Stop' },
+						{ id: 'HoldSection', label: 'Hold section (end of section reached)' },
+						{ id: 'HoldEnd', label: 'Hold end (end of track reached)' },
 					],
 					default: 'Play',
 					disableAutoExpression: true,
 				},
+				currentTransportOption,
 			],
-			callback: (feedback) => self.state.connected && self.state.playmode === feedback.options.playmode,
+			callback: (feedback) =>
+				self.state.connected &&
+				self.playmodeOf(self.transportName(feedback.options.transport)) === feedback.options.playmode,
+		},
+		playing: {
+			name: 'Transport is playing',
+			description: 'True while playback is running (false when stopped or holding at the end of a section)',
+			type: 'boolean',
+			defaultStyle: {
+				bgcolor: 0x00a000,
+				color: 0xffffff,
+			},
+			options: [currentTransportOption],
+			callback: (feedback) => {
+				const name = self.transportName(feedback.options.transport)
+				return self.state.connected && !!self.state.playheads.find((p) => p.name === name)?.playing
+			},
 		},
 		cue_active: {
 			name: 'Cue is current (playhead)',

@@ -69,11 +69,42 @@ export interface TransportPlayhead {
 	trackName: string
 	/** Seconds from the start of the track */
 	time: number
-	/** Project refresh rate, used for timecode and the cue time tolerance */
+	/** Project refresh rate, used for timecode */
 	fps: number
+	/** Playmode reported by Live Update ('' until the first value) */
+	playmode: TransportPlaymode
+	/** Playback is actually running (false while stopped or holding at the end of a section) */
+	playing: boolean
+	engaged: boolean
+	speed: number
 	/** Last cue at or before the playhead */
 	cue?: Cue
 	nextCue?: Cue
+}
+
+/** Playmode of a transport - REST values plus the hold states only Live Update reports */
+export type TransportPlaymode = 'Play' | 'PlaySection' | 'Loop' | 'Stop' | 'HoldSection' | 'HoldEnd' | ''
+
+/** Live Update `str(player.playMode)` → module playmode (REST names loop section "Loop") */
+function parsePlaymode(value: unknown): TransportPlaymode {
+	switch (value) {
+		case 'Play':
+		case 'PlaySection':
+		case 'Stop':
+		case 'HoldSection':
+		case 'HoldEnd':
+			return value
+		case 'LoopSection':
+		case 'Loop':
+			return 'Loop'
+		default:
+			return ''
+	}
+}
+
+/** Transport name usable inside variable and preset ids */
+export function transportVarId(name: string): string {
+	return name.replace(/[^A-Za-z0-9]/g, '_')
 }
 
 export interface DisguiseState {
@@ -86,7 +117,9 @@ export interface DisguiseState {
 	currentTransport: string
 	/** Name of the main transport: the current one when known and in use, else the first in use */
 	transport: string
-	playmode: PlayMode | ''
+	/** Playmode of the main transport - from Live Update when available, else from the REST poll */
+	playmode: TransportPlaymode
+	playing: boolean
 	engaged: boolean
 	trackName: string
 	trackUid: string
@@ -108,9 +141,12 @@ const PLAYHEAD_SUBSCRIPTION = 'playhead:'
 const PLAYHEAD_UPDATE_MS = 150
 /** Time variables are refreshed at most this often (cue changes are applied immediately) */
 const TIME_VARIABLES_MS = 250
-/** [track uid, seconds, refresh rate] of a transport (arrays only - see CUE_LIST_EXPRESSION) */
+/**
+ * [track uid, seconds, refresh rate, playmode, playing, engaged, speed] of a transport
+ * (arrays only - see CUE_LIST_EXPRESSION; playMode is a struct - str() gives its name)
+ */
 const PLAYHEAD_EXPRESSION =
-	'[str(object.player.track.uid), object.player.track.beatToTime(object.player.tRender), state.globalRefreshRate.asDouble]'
+	'[str(object.player.track.uid), object.player.track.beatToTime(object.player.tRender), state.globalRefreshRate.asDouble, str(object.player.playMode), object.player.playing, object.engaged, object.player.speed]'
 const CURRENT_TRANSPORT_SUBSCRIPTION = 'currentTransport'
 /** Designer's current transport - with a multi-transport the one whose timeline is selected */
 const CURRENT_TRANSPORT_EXPRESSION = 'guisystem.currentTransportManager.description'
@@ -132,6 +168,7 @@ function emptyState(): DisguiseState {
 		currentTransport: '',
 		transport: '',
 		playmode: '',
+		playing: false,
 		engaged: false,
 		trackName: '',
 		trackUid: '',
@@ -341,11 +378,26 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	/** Transport, playmode and track variables follow the main transport */
 	private updateMainTransport(): void {
 		const transport = this.mainTransport
+		const playhead = this.state.playheads.find((p) => p.uid === transport?.uid)
 		this.state.transport = transport?.name ?? ''
-		this.state.playmode = transport?.playmode ?? ''
+		this.state.playmode = playhead?.playmode || parsePlaymode(transport?.playmode)
+		this.state.playing = playhead?.playing ?? false
 		this.state.engaged = transport?.engaged ?? false
 		this.state.trackUid = transport?.currentTrack?.uid ?? ''
 		this.state.trackName = transport?.currentTrack?.name ?? ''
+	}
+
+	/** Playmode of a transport in use: live from its playhead, else from the last REST poll */
+	playmodeOf(transportName: string): TransportPlaymode {
+		const playhead = this.state.playheads.find((p) => p.name === transportName)
+		if (playhead?.playmode) return playhead.playmode
+		return parsePlaymode(this.state.transports.find((t) => t.name === transportName)?.playmode)
+	}
+
+	/** Transport name for a feedback/action option: "current" (or empty) → the main transport */
+	transportName(option: string | undefined): string {
+		const name = String(option ?? '').trim()
+		return name === '' || name === TRANSPORT_CURRENT || name === TRANSPORT_AUTO ? this.state.transport : name
 	}
 
 	private handlePollError(err: Error): void {
@@ -472,9 +524,13 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 				trackName: t.currentTrack?.name ?? '',
 				time: 0,
 				fps: 0,
+				playmode: '',
+				playing: false,
+				engaged: t.engaged,
+				speed: t.speed,
 			}
 			playhead.name = t.name
-			playhead.varId = t.name.replace(/[^A-Za-z0-9]/g, '_')
+			playhead.varId = transportVarId(t.name)
 
 			// Re-subscribing with the same object + property is a no-op; a renamed transport gets a new subscription
 			client.subscribe(
@@ -495,10 +551,33 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	private setPlayhead(uid: string, value: unknown): void {
 		const playhead = this.state.playheads.find((p) => p.uid === uid)
 		if (!playhead || !Array.isArray(value)) return
-		const [trackUid, time, fps] = value as [string | null, number | null, number | null]
+		const [trackUid, time, fps, playmode, playing, engaged, speed] = value as [
+			string | null,
+			number | null,
+			number | null,
+			string | null,
+			boolean | null,
+			boolean | null,
+			number | null,
+		]
 		playhead.trackUid = trackUid ?? ''
 		playhead.time = Number(time) || 0
 		playhead.fps = Number(fps) || playhead.fps
+
+		const nextPlaymode = parsePlaymode(playmode)
+		const stateChanged =
+			nextPlaymode !== playhead.playmode || !!playing !== playhead.playing || !!engaged !== playhead.engaged
+		playhead.playmode = nextPlaymode
+		playhead.playing = !!playing
+		playhead.engaged = !!engaged
+		playhead.speed = Number(speed) || 0
+
+		if (stateChanged) {
+			// Playmode / playing changed in Designer - apply right away (no wait for the REST poll)
+			this.updateMainTransport()
+			UpdateVariableValues(this)
+			this.checkFeedbacks('playmode', 'playing')
+		}
 
 		if (this.updateCurrentCue(playhead)) {
 			this.lastTimeVariablesUpdate = Date.now()
@@ -608,9 +687,11 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		this.state.tracks = this.orderedTracks()
 		this.state.cues = this.state.tracks.flatMap((t) => t.cues)
 
-		const presetSignature = JSON.stringify(
+		// Transport names are part of it: there is a transport preset group per transport in use
+		const presetSignature = JSON.stringify([
+			this.state.transports.map((t) => t.name),
 			this.state.tracks.map((t) => [t.uid, t.name, t.cues.map((c) => [c.id, c.note])]),
-		)
+		])
 		const variableSignature = JSON.stringify([
 			this.state.cues.map((c) => c.varId),
 			this.state.playheads.map((p) => p.varId),
@@ -650,7 +731,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			this.updatePresets()
 		}
 
-		this.checkFeedbacks('connected', 'playmode', 'cue_active', 'cue_next', 'cue_last_triggered')
+		this.checkFeedbacks('connected', 'playmode', 'playing', 'cue_active', 'cue_next', 'cue_last_triggered')
 	}
 
 	/** Locator for the transport option of the transport actions: Designer's current transport or a name */

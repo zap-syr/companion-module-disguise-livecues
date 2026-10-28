@@ -9,7 +9,7 @@ export type ModuleConfig = {
 	cueUpdateInterval: number
 }
 
-export const DEFAULT_POLL_INTERVAL = 1000
+export const DEFAULT_POLL_INTERVAL = 2000
 export const DEFAULT_TIMEOUT = 2000
 export const DEFAULT_CUE_UPDATE_INTERVAL = 3000
 
@@ -44,9 +44,9 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			type: 'number',
 			id: 'pollInterval',
 			width: 6,
-			label: 'Polling interval (ms) - transport status and reconnect',
+			label: 'Polling interval (ms) - transports in use and reconnect',
 			tooltip:
-				'How often the transport status (playmode, current track) is read, and the retry interval while Designer is unreachable. The cue list has its own interval below.',
+				'How often the list of transports in use (single / multi-transport) and their setlists are read, and the retry interval while Designer is unreachable. Playmode and playhead come live through Live Update; the cue list has its own interval below.',
 			default: DEFAULT_POLL_INTERVAL,
 			min: 250,
 			max: 60000,

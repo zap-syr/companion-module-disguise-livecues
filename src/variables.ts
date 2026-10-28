@@ -14,6 +14,8 @@ const PLAYHEAD_VARIABLES: [suffix: string, name: string][] = [
 	['next_cue_note', 'note of the next cue'],
 	['time', 'playhead (HH:MM:SS:FF)'],
 	['time_to_next', 'time to the next cue (HH:MM:SS:FF)'],
+	['playmode', 'playmode (Play, PlaySection, Loop, Stop, HoldSection, HoldEnd)'],
+	['playing', 'playing (true/false)'],
 ]
 
 export function UpdateVariableDefinitions(self: ModuleInstance): void {
@@ -23,7 +25,8 @@ export function UpdateVariableDefinitions(self: ModuleInstance): void {
 		version: { name: 'Designer version' },
 		current_transport: { name: 'Transport selected in Designer (multi-transport: the selected timeline)' },
 		transport: { name: 'Main transport: the selected one when in use, else the first in use' },
-		playmode: { name: 'Playmode of the main transport (Play, PlaySection, Loop, Stop)' },
+		playmode: { name: 'Playmode of the main transport (Play, PlaySection, Loop, Stop, HoldSection, HoldEnd)' },
+		playing: { name: 'Main transport is playing (true/false)' },
 		engaged: { name: 'Main transport engaged (true/false)' },
 		track: { name: 'Current track of the main transport' },
 		track_uid: { name: 'Current track uid of the main transport' },
@@ -68,6 +71,7 @@ export function UpdateVariableValues(self: ModuleInstance): void {
 		current_transport: s.currentTransport,
 		transport: s.transport,
 		playmode: s.playmode,
+		playing: s.playing,
 		engaged: s.engaged,
 		track: s.trackName,
 		track_uid: s.trackUid,
@@ -105,6 +109,8 @@ function playheadValues(self: ModuleInstance): CompanionVariableValues {
 		values[`tr_${p.varId}_next_cue_note`] = p.nextCue?.note ?? ''
 		values[`tr_${p.varId}_time`] = formatTimecode(p.time, p.fps)
 		values[`tr_${p.varId}_time_to_next`] = p.nextCue ? formatTimecode(p.nextCue.time - p.time, p.fps) : ''
+		values[`tr_${p.varId}_playmode`] = self.playmodeOf(p.name)
+		values[`tr_${p.varId}_playing`] = p.playing
 	}
 	// The main transport: selected in Designer when in use, else the first in use
 	const first: TransportPlayhead | undefined =
