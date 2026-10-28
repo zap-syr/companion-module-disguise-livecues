@@ -53,20 +53,22 @@ export function UpdateActions(self: ModuleInstance): void {
 	const actions: CompanionActionDefinitions<ModuleSchema['actions']> = {
 		go_to_cue: {
 			name: 'Go to cue',
-			description: 'Jump to a CUE tag of the current track (e.g. 1, 2.5, 1.2.3)',
+			description:
+				'Jump to a CUE tag (e.g. 1, 2.5, 1.2.3). A cue on another track switches the transport to that track.',
 			options: [
 				{ id: 'cue', type: 'textinput', label: 'Cue', default: '1', minLength: 1 },
-				playmodeOption('Play'),
+				playmodeOption('PlaySection'),
 				{
 					id: 'global',
 					type: 'checkbox',
-					label: 'Search all tracks (global jump)',
+					label: 'Always search all tracks (global jump)',
+					tooltip: 'Not needed for cues the module knows - their track is switched to automatically',
 					default: false,
 				},
 			],
 			callback: async (event) => {
 				const cue = String(event.options.cue).trim()
-				await run(async () => self.getApi().goToCue(cue, event.options.playmode, event.options.global))
+				await run(async () => self.triggerCue(cue, event.options.playmode, event.options.global))
 				self.setLastCue(cue)
 			},
 		},
@@ -177,9 +179,13 @@ export function UpdateActions(self: ModuleInstance): void {
 		},
 		refresh: {
 			name: 'Refresh cue list',
-			description: 'Re-read status and cues from Designer now (they are also polled automatically)',
+			description:
+				'Read the cues and notes of all tracks from Designer now (one request). Needed when automatic cue list updates are off.',
 			options: [],
-			callback: async () => self.pollNow(),
+			callback: async () => {
+				self.pollNow()
+				await self.refreshCueList()
+			},
 		},
 	}
 

@@ -4,6 +4,7 @@ import type { Cue } from './main.js'
 import type {
 	CompanionButtonStepActions,
 	CompanionPresetDefinitions,
+	CompanionPresetGroup,
 	CompanionPresetSection,
 	SomeButtonGraphicsElement,
 } from '@companion-module/base'
@@ -129,14 +130,34 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 export function UpdatePresets(self: ModuleInstance): void {
 	const presets: CompanionPresetDefinitions<ModuleSchema> = {}
 	const label = self.label
-	const { cues, trackName } = self.state
+	const { tracks } = self.state
 
-	// --- Cues of the current track (rebuilt automatically when the cue list changes) ---
-	const cuePresetIds: string[] = []
-	for (const cue of cues) {
-		const id = `cue_${cue.varId}`
-		cuePresetIds.push(id)
-		presets[id] = cuePreset(label, cue)
+	// --- Cues of every track, one group per track (rebuilt automatically when the cue list changes) ---
+	const cueGroups: CompanionPresetGroup[] = []
+	for (const track of tracks) {
+		if (track.cues.length === 0) continue
+		const presetIds: string[] = []
+		for (const cue of track.cues) {
+			const id = `cue_${cue.varId}`
+			presetIds.push(id)
+			presets[id] = cuePreset(label, cue)
+		}
+		cueGroups.push({
+			id: `cues_track_${track.uid}`,
+			name: track.name,
+			description: `${track.cues.length} cue(s) - generated from the CUE tags and notes of the track`,
+			type: 'simple',
+			presets: presetIds,
+		})
+	}
+	if (cueGroups.length === 0) {
+		cueGroups.push({
+			id: 'cues_none',
+			name: 'Cues',
+			description: 'No CUE tags found in the project (or the cue list was not read yet - see "Refresh cue list")',
+			type: 'simple',
+			presets: [],
+		})
 	}
 
 	// --- Transport ---
@@ -220,21 +241,24 @@ export function UpdatePresets(self: ModuleInstance): void {
 		feedbacks: [],
 	}
 
+	presets['status_refresh'] = {
+		type: 'simple',
+		name: 'Refresh cue list',
+		style: {
+			text: `REFRESH CUES\n$(${label}:cue_list_updated)`,
+			size: 'auto',
+			color: WHITE,
+			bgcolor: GREY,
+		},
+		steps: [{ down: [{ actionId: 'refresh', options: {} }], up: [] }],
+		feedbacks: [],
+	}
+
 	const structure: CompanionPresetSection[] = [
 		{
 			id: 'cues',
 			name: 'Cues',
-			definitions: [
-				{
-					id: 'cues_current_track',
-					name: trackName ? `Cues - ${trackName}` : 'Cues',
-					description: cues.length
-						? 'Generated automatically from the CUE tags and notes of the active track'
-						: 'No CUE tags found on the active track (or not connected yet)',
-					type: 'simple',
-					presets: cuePresetIds,
-				},
-			],
+			definitions: cueGroups,
 		},
 		{
 			id: 'transport',
@@ -256,7 +280,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 					id: 'status_buttons',
 					name: 'Status',
 					type: 'simple',
-					presets: ['status_connection', 'status_track', 'status_last_cue'],
+					presets: ['status_connection', 'status_track', 'status_last_cue', 'status_refresh'],
 				},
 			],
 		},

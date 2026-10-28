@@ -1,7 +1,6 @@
 // Thin client for the Disguise Designer Session REST API (/api/session/...)
 
 export type PlayMode = 'NotSet' | 'Play' | 'PlaySection' | 'Loop' | 'Stop' | 'Unknown'
-export type TagType = 'TagType_Unknown' | 'TC' | 'MIDI' | 'CUE'
 
 export interface Locator {
 	uid?: string
@@ -38,11 +37,16 @@ export interface TransportInfo {
 	speed: number
 }
 
-export interface CueInfo {
-	note?: { time: number; text: string }
-	tags: { time: number; type: TagType; value: string }[]
-	section?: { time: number; index: string }
-}
+/** Raw cue list of one track: [track uid, track name, [[cue, note, seconds], ...]] */
+export type RawTrackCues = [string, string, [string, string, number][]]
+
+/**
+ * Python expression returning the CUE tags and notes of every track in the project.
+ * Used both for the Live Update subscription and for a one-off Python execute.
+ * Must return nested arrays: dicts inside nested lists are never delivered by Live Update.
+ */
+export const CUE_LIST_EXPRESSION =
+	"[[str(t.uid), t.description, [[g.text, t.cues.getV(i).note, t.beatToTime(t.cues.getT(i))] for i in range(t.cues.n()) for g in t.cues.getV(i).getTags() if int(g.type) == 1]] for t in resourceManager.allResources(Track) if str(t.path).startswith('objects/')]"
 
 /** Error thrown when Designer can not be reached at all (network / timeout) */
 export class DisguiseConnectionError extends Error {}
@@ -55,11 +59,13 @@ export class DisguiseCommandError extends Error {}
 
 export class DisguiseApi {
 	readonly baseUrl: string
+	readonly liveUpdateUrl: string
 	private readonly timeoutMs: number
 
 	constructor(host: string, port: number, timeoutMs: number) {
 		const hostPart = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
 		this.baseUrl = `http://${hostPart}:${port}/api/session`
+		this.liveUpdateUrl = `ws://${hostPart}:${port}/api/session/liveupdate`
 		this.timeoutMs = timeoutMs
 	}
 
@@ -117,14 +123,14 @@ export class DisguiseApi {
 			.result
 	}
 
-	async getTracks(): Promise<TrackInfo[]> {
-		return (await this.request<{ status: ApiStatus; result: TrackInfo[] }>('GET', 'transport/tracks')).result
-	}
-
-	/** Cues of a track (the active track when no uid is given) */
-	async getCues(trackUid?: string): Promise<CueInfo[]> {
-		const query = trackUid ? `?uid=${encodeURIComponent(trackUid)}` : ''
-		return (await this.request<{ status: ApiStatus; cues?: CueInfo[] }>('GET', `transport/cues${query}`)).cues ?? []
+	/** Cues of all tracks in one request - one-off reads only, Python execute must never be polled */
+	async getAllCues(): Promise<RawTrackCues[]> {
+		const data = await this.request<{ status: ApiStatus; returnValue?: unknown }>('POST', 'python/execute', {
+			script: `return ${CUE_LIST_EXPRESSION}`,
+		})
+		const value = typeof data.returnValue === 'string' ? (JSON.parse(data.returnValue) as unknown) : data.returnValue
+		if (!Array.isArray(value)) throw new DisguiseCommandError('Unexpected cue list returned by Designer')
+		return value as RawTrackCues[]
 	}
 
 	// --- Commands (always on the active transport) ---
@@ -159,8 +165,13 @@ export class DisguiseApi {
 		await this.simple('returntostart')
 	}
 
-	async goToCue(cue: string, playmode?: PlayMode, allowGlobalJump = false): Promise<void> {
-		await this.withPlaymode('gototag', { type: 'CUE', value: cue, allowGlobalJump }, playmode)
+	/** Without a transport the command goes to Designer's current transport (not always the first one in use) */
+	async goToCue(cue: string, playmode?: PlayMode, allowGlobalJump = false, transport?: Locator): Promise<void> {
+		await this.withPlaymode(
+			'gototag',
+			{ transport: transport ?? {}, type: 'CUE', value: cue, allowGlobalJump },
+			playmode,
+		)
 	}
 
 	async goToSection(index: number, playmode?: PlayMode): Promise<void> {
