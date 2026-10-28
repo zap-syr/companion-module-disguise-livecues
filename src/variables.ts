@@ -34,11 +34,11 @@ export function UpdateVariableDefinitions(self: ModuleInstance): void {
 		cue_list_updated: { name: 'Time of the last cue list update' },
 		last_cue: { name: 'Last cue triggered from Companion' },
 		last_cue_note: { name: 'Note of the last cue triggered from Companion' },
-		current_cue: { name: 'Current cue of the first transport in use' },
-		current_cue_note: { name: 'Note of the current cue of the first transport in use' },
-		next_cue: { name: 'Next cue of the first transport in use' },
-		next_cue_note: { name: 'Note of the next cue of the first transport in use' },
-		current_time: { name: 'Playhead of the first transport in use (HH:MM:SS:FF)' },
+		current_cue: { name: 'Current cue of the selected transport' },
+		current_cue_note: { name: 'Note of the current cue of the selected transport' },
+		next_cue: { name: 'Next cue of the selected transport' },
+		next_cue_note: { name: 'Note of the next cue of the selected transport' },
+		current_time: { name: 'Playhead of the selected transport (HH:MM:SS:FF)' },
 	}
 
 	for (const playhead of self.state.playheads) {
@@ -106,7 +106,9 @@ function playheadValues(self: ModuleInstance): CompanionVariableValues {
 		values[`tr_${p.varId}_time`] = formatTimecode(p.time, p.fps)
 		values[`tr_${p.varId}_time_to_next`] = p.nextCue ? formatTimecode(p.nextCue.time - p.time, p.fps) : ''
 	}
-	const first: TransportPlayhead | undefined = self.state.playheads[0]
+	// The main transport: selected in Designer when in use, else the first in use
+	const first: TransportPlayhead | undefined =
+		self.state.playheads.find((p) => p.name === self.state.transport) ?? self.state.playheads[0]
 	values.current_cue = first?.cue?.id ?? ''
 	values.current_cue_note = first?.cue?.note ?? ''
 	values.next_cue = first?.nextCue?.id ?? ''

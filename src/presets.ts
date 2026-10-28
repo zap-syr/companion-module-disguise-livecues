@@ -201,9 +201,9 @@ export function UpdatePresets(self: ModuleInstance): void {
 		['loop_section', '⟳\nLOOP', 'loop_section', 'Loop'],
 		['stop', '⏸\nSTOP', 'stop', 'Stop'],
 		['return_to_start', '⏮\nSTART', 'return_to_start'],
-		['prev_section', '◀\nSECTION', 'prev_section'],
+		['prev_section', 'SECTION\n◀', 'prev_section'],
 		['next_section', 'SECTION\n▶', 'next_section'],
-		['prev_track', '◀\nTRACK', 'prev_track'],
+		['prev_track', 'TRACK\n◀', 'prev_track'],
 		['next_track', 'TRACK\n▶', 'next_track'],
 	]
 	const transportPresetIds: string[] = []
@@ -260,22 +260,10 @@ export function UpdatePresets(self: ModuleInstance): void {
 		steps: [{ down: [{ actionId: 'refresh', options: {} }], up: [] }],
 		feedbacks: [{ feedbackId: 'connected', options: {}, style: { bgcolor: GREEN, text: 'DISGUISE\nONLINE' } }],
 	}
-	presets['status_last_cue'] = {
-		type: 'simple',
-		name: 'Last cue triggered',
-		style: {
-			text: `CUE $(${label}:last_cue)\n$(${label}:last_cue_note)`,
-			size: 'auto',
-			color: WHITE,
-			bgcolor: GREY,
-		},
-		steps: [],
-		feedbacks: [],
-	}
 
 	presets['status_current_cue'] = {
 		type: 'simple',
-		name: 'Current cue (playhead of the first transport in use)',
+		name: 'Current cue (playhead of the selected transport)',
 		style: {
 			text: `NOW $(${label}:current_cue)\n$(${label}:current_cue_note)\n$(${label}:current_time)`,
 			size: 'auto',
@@ -287,7 +275,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 	}
 	presets['status_next_cue'] = {
 		type: 'simple',
-		name: 'Next cue (first transport in use)',
+		name: 'Next cue (selected transport)',
 		style: {
 			text: `NEXT $(${label}:next_cue)\n$(${label}:next_cue_note)`,
 			size: 'auto',
@@ -336,14 +324,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 					id: 'status_buttons',
 					name: 'Status',
 					type: 'simple',
-					presets: [
-						'status_connection',
-						'status_track',
-						'status_current_cue',
-						'status_next_cue',
-						'status_last_cue',
-						'status_refresh',
-					],
+					presets: ['status_connection', 'status_track', 'status_current_cue', 'status_next_cue', 'status_refresh'],
 				},
 			],
 		},

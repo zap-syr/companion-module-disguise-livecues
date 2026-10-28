@@ -48,8 +48,8 @@ specific transport go to it, as Designer does itself.
   turns dark green while its cue is the current cue of any transport and dark yellow while it is
   the next cue.
 - **Transport** - Play / Section / Loop / Stop / Start / Next / Previous, lit by the playmode.
-- **Status** - connection, current track and playmode, current and next cue, last triggered cue,
-  refresh cue list.
+- **Status** - connection, current track and playmode, current and next cue (all of the selected
+  transport), refresh cue list.
 
 ### Cue highlight
 
@@ -73,8 +73,8 @@ highlighted too.
 `cue_count` / `cue_list` (current track), `cue_count_total`, `track_count`, `cue_list_updated`,
 `last_cue`, `last_cue_note`.
 
-Playhead of the first transport in use: `current_cue`, `current_cue_note`, `next_cue`,
-`next_cue_note`, `current_time`.
+Playhead of the selected transport (or the first in use): `current_cue`, `current_cue_note`,
+`next_cue`, `next_cue_note`, `current_time`.
 
 Per transport in use (`<transport>` = its name, non-alphanumeric characters as `_`):
 `tr_<transport>_track`, `_cue`, `_cue_note`, `_next_cue`, `_next_cue_note`, `_time`,
