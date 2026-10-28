@@ -22,13 +22,23 @@ websocket is down. The module keeps retrying and reconnects on its own.
 ### Actions
 
 - **Go to cue** - jump to a CUE tag (`1`, `2.5`, `1.2.3`) with an optional playmode (Play to end
-  of section by default). A cue on another track switches the transport to that track (it must be
-  in the transport's setlist). With a multi-transport the cue goes to the first transport in use.
+  of section by default) on a chosen transport or **Auto**. A cue on another track switches the
+  transport to that track (it must be in the transport's setlist). Auto picks, in this order:
+  1. the selected transport (see below), if it is on the cue's track;
+  2. another transport in use that is on the cue's track;
+  3. the selected transport, switching it to the cue's track;
+  4. the first transport in use whose setlist contains the cue's track.
 - **Go to section**, **Next / Previous section**
 - **Go to track**, **Next / Previous track**
 - **Go to timecode**
 - **Play**, **Play to end of section**, **Loop section**, **Stop**, **Return to start**
 - **Refresh cue list** - read the cues and notes of all tracks now
+
+All transport actions have a **Transport** option: **Current** (default) or a transport name.
+
+The **selected transport** is the transport chosen in Designer - with a multi-transport, the one
+whose timeline is selected (highlighted in the multi-transport widget). Commands without a
+specific transport go to it, as Designer does itself.
 
 ### Presets
 
@@ -58,7 +68,8 @@ highlighted too.
 
 ### Variables
 
-`connected`, `project`, `version`, `transport`, `playmode`, `engaged`, `track`, `track_uid`,
+`connected`, `project`, `version`, `current_transport` (selected in Designer), `transport`,
+`playmode`, `engaged`, `track`, `track_uid` (of the selected transport, or the first in use),
 `cue_count` / `cue_list` (current track), `cue_count_total`, `track_count`, `cue_list_updated`,
 `last_cue`, `last_cue_note`.
 

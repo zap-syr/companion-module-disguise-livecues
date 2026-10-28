@@ -183,14 +183,34 @@ playhead crossed 105 s. Not yet verified: transport names with special character
   `next_cue_note`, `time` (HH:MM:SS:FF), `time_to_next`; global `current_cue` /
   `current_cue_note` for the first transport in use.
 
-### Stage 5c. Transport selection for cue triggering - TODO
+### Stage 5c. Transport selection for cue triggering - ✅ (cue triggering verified in Companion)
+
+Implemented in `src/main.ts` (`autoTransport`, `triggerCue`, `confirmTrack`,
+`setCurrentTransport`), `src/actions.ts`, `src/disguise.ts` (transport locator on every
+command, `getTransports`). The `transport` / `playmode` / `track` variables and the playmode
+feedback now follow the selected transport (fallback: first transport in use). Preset order
+still follows the setlist of the first transport in use, so switching timelines does not
+rebuild presets.
 
 - Go to cue gets a **Transport** option: `Auto` (default) or a transport name
   (dropdown from `transport/transports`, custom value allowed).
-- `Auto` resolves to:
-  1. a transport in use that is currently on the cue's track;
-  2. otherwise the first transport in use whose setlist contains the cue's track;
-  3. otherwise the first transport in use.
+- **Designer's current transport**: with a multi-transport it is the transport whose
+  timeline is selected in Designer (highlighted in the multi-transport widget); it is also
+  the one a command without a transport locator acts on. Read through Live Update
+  (property `guisystem.currentTransportManager.description`, verified = `default`), pushed
+  only when it changes. Exposed as variable `current_transport`.
+- `Auto` resolves to (agreed variant A - the cue goes where its track already plays,
+  other transports are not touched without need):
+  1. Designer's current transport, if it is on the cue's track - jump without switching
+     tracks;
+  2. otherwise another transport in use that is on the cue's track (first one if several)
+     - jump without switching tracks;
+  3. otherwise Designer's current transport, if the cue's track is in its setlist -
+     global jump (the transport switches to the cue's track);
+  4. otherwise the first transport in use whose setlist contains the cue's track -
+     global jump;
+  5. otherwise an action error "track is not in the setlist of any transport in use"
+     (no command sent).
 - The module knows the cue's track (5a), so:
   - transport already on that track → `gototag` with `allowGlobalJump: false`
     (strict status check);
@@ -200,8 +220,8 @@ playhead crossed 105 s. Not yet verified: transport names with special character
   - track not in the transport's setlist → action error without sending the command.
 - Cue presets: transport `Auto`, playmode "Play to end of section".
 - Transport option for Play / Stop / Play section / Loop / Return to start / section and
-  track navigation: `Active` (default - verify how an empty locator behaves with a
-  multi-transport) or a transport name.
+  track navigation: `Current` (default - Designer's current transport, as Designer itself
+  does for a command without a locator) or a transport name.
 
 ### Stage 6. Optimisation - TODO
 

@@ -1,6 +1,6 @@
 import type { ModuleSchema } from './main.js'
 import type ModuleInstance from './main.js'
-import type { Cue } from './main.js'
+import { TRANSPORT_AUTO, TRANSPORT_CURRENT, type Cue } from './main.js'
 import { ANY_TRANSPORT, CUE_CURRENT_COLOR, CUE_NEXT_COLOR } from './feedbacks.js'
 import type {
 	CompanionButtonStepActions,
@@ -34,7 +34,12 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 
 	const steps: CompanionButtonStepActions<ModuleSchema>[] = [
 		{
-			down: [{ actionId: 'go_to_cue', options: { cue: cue.id, playmode: 'PlaySection', global: false } }],
+			down: [
+				{
+					actionId: 'go_to_cue',
+					options: { cue: cue.id, transport: TRANSPORT_AUTO, playmode: 'PlaySection', global: false },
+				},
+			],
 			up: [],
 		},
 	]
@@ -214,7 +219,10 @@ export function UpdatePresets(self: ModuleInstance): void {
 					down: [
 						{
 							actionId,
-							options: actionId.includes('_section') || actionId.includes('_track') ? { playmode: 'NotSet' } : {},
+							options:
+								actionId.includes('_section') || actionId.includes('_track')
+									? { transport: TRANSPORT_CURRENT, playmode: 'NotSet' }
+									: { transport: TRANSPORT_CURRENT },
 						},
 					],
 					up: [],

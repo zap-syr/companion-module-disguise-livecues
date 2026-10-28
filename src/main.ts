@@ -22,6 +22,7 @@ import {
 	DisguiseCommandError,
 	DisguiseConnectionError,
 	DisguiseNoProjectError,
+	type Locator,
 	type PlayMode,
 	type RawTrackCues,
 	type TransportInfo,
@@ -81,6 +82,9 @@ export interface DisguiseState {
 	version: string
 	/** Transports in use: one, or every child of the selected multi-transport */
 	transports: TransportInfo[]
+	/** Designer's current transport (multi-transport: the one whose timeline is selected), from Live Update */
+	currentTransport: string
+	/** Name of the main transport: the current one when known and in use, else the first in use */
 	transport: string
 	playmode: PlayMode | ''
 	engaged: boolean
@@ -107,6 +111,15 @@ const TIME_VARIABLES_MS = 250
 /** [track uid, seconds, refresh rate] of a transport (arrays only - see CUE_LIST_EXPRESSION) */
 const PLAYHEAD_EXPRESSION =
 	'[str(object.player.track.uid), object.player.track.beatToTime(object.player.tRender), state.globalRefreshRate.asDouble]'
+const CURRENT_TRANSPORT_SUBSCRIPTION = 'currentTransport'
+/** Designer's current transport - with a multi-transport the one whose timeline is selected */
+const CURRENT_TRANSPORT_EXPRESSION = 'guisystem.currentTransportManager.description'
+/** How long to wait for the playhead to confirm a global jump */
+const JUMP_CONFIRM_MS = 1500
+
+/** Action option values for the transport */
+export const TRANSPORT_AUTO = 'auto'
+export const TRANSPORT_CURRENT = 'current'
 
 function emptyState(): DisguiseState {
 	return {
@@ -114,6 +127,7 @@ function emptyState(): DisguiseState {
 		project: '',
 		version: '',
 		transports: [],
+		currentTransport: '',
 		transport: '',
 		playmode: '',
 		engaged: false,
@@ -298,15 +312,10 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 
 		const transports = await api.getActiveTransport()
 		if (api !== this.api) return
-		const transport = transports[0]
 
 		this.state.connected = true
 		this.state.transports = transports
-		this.state.transport = transport?.name ?? ''
-		this.state.playmode = transport?.playmode ?? ''
-		this.state.engaged = transport?.engaged ?? false
-		this.state.trackUid = transport?.currentTrack?.uid ?? ''
-		this.state.trackName = transport?.currentTrack?.name ?? ''
+		this.updateMainTransport()
 
 		// Live Update is always needed for the playheads; the cue list subscription only in automatic mode
 		this.ensureLiveUpdate(api)
@@ -319,6 +328,22 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 
 		this.applyState()
+	}
+
+	/** The main transport: Designer's current one when it is in use, else the first transport in use */
+	get mainTransport(): TransportInfo | undefined {
+		const transports = this.state.transports
+		return transports.find((t) => t.name === this.state.currentTransport) ?? transports[0]
+	}
+
+	/** Transport, playmode and track variables follow the main transport */
+	private updateMainTransport(): void {
+		const transport = this.mainTransport
+		this.state.transport = transport?.name ?? ''
+		this.state.playmode = transport?.playmode ?? ''
+		this.state.engaged = transport?.engaged ?? false
+		this.state.trackUid = transport?.currentTrack?.uid ?? ''
+		this.state.trackName = transport?.currentTrack?.name ?? ''
 	}
 
 	private handlePollError(err: Error): void {
@@ -385,8 +410,18 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 		this.liveUpdate.connect()
 
-		// Any resolvable object will do as the cue list anchor - use the first transport in use
+		// Any resolvable object will do as the anchor of project-wide subscriptions - use the first transport in use
 		const anchor = this.state.transports[0]?.name
+		if (anchor) {
+			// Changes only when the operator selects another transport's timeline in Designer
+			this.liveUpdate.subscribe(
+				CURRENT_TRANSPORT_SUBSCRIPTION,
+				transportObjectPath(anchor),
+				CURRENT_TRANSPORT_EXPRESSION,
+				(value) => this.setCurrentTransport(value),
+				{ onError: (message) => this.log('warn', `Current transport unavailable: ${message}`) },
+			)
+		}
 		if (this.cueAutoUpdate && anchor) {
 			const interval = Math.min(10000, Math.max(1000, this.config.cueUpdateInterval || DEFAULT_CUE_UPDATE_INTERVAL))
 			this.liveUpdate.subscribe(
@@ -402,6 +437,15 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 
 		this.syncPlayheads()
+	}
+
+	private setCurrentTransport(value: unknown): void {
+		const name = typeof value === 'string' ? value : ''
+		if (name === this.state.currentTransport) return
+		this.state.currentTransport = name
+		this.log('debug', `Current transport: ${name}`)
+		this.updateMainTransport()
+		this.applyState()
 	}
 
 	/** One playhead subscription per transport in use (one transport, or the children of a multi-transport) */
@@ -489,6 +533,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		this.liveUpdateError = ''
 		this.playheadSubscriptions.clear()
 		this.state.playheads = []
+		this.state.currentTransport = ''
 	}
 
 	// --- Cue list ---
@@ -587,7 +632,9 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 
 		if (transportsSignature !== this.transportsSignature) {
 			this.transportsSignature = transportsSignature
-			this.updateFeedbacks() // the transport dropdowns list the transports in use
+			// The transport dropdowns list the transports in use
+			this.updateActions()
+			this.updateFeedbacks()
 		}
 
 		if (presetSignature !== this.presetSignature) {
@@ -604,16 +651,69 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		this.checkFeedbacks('connected', 'playmode', 'cue_active', 'cue_next', 'cue_last_triggered')
 	}
 
+	/** Locator for the transport option of the transport actions: Designer's current transport or a name */
+	transportLocator(option: string | undefined): Locator {
+		const name = String(option ?? '').trim()
+		return name === '' || name === TRANSPORT_CURRENT || name === TRANSPORT_AUTO ? {} : { name }
+	}
+
+	/** Track a transport is on - from its playhead (live) when subscribed, else from the last REST poll */
+	private trackOf(transport: TransportInfo): string {
+		return this.state.playheads.find((p) => p.uid === transport.uid)?.trackUid || transport.currentTrack?.uid || ''
+	}
+
 	/**
-	 * Jump to a cue on the first transport in use. A cue on another track is reached with a global jump
-	 * (Designer switches the transport to that track, within its setlist).
+	 * Pick the transport for a cue in Auto mode (variant A - the cue goes where its track already plays):
+	 * 1. Designer's current transport, if it is on the cue's track;
+	 * 2. another transport in use on the cue's track;
+	 * 3. Designer's current transport, if the track is in its setlist (it switches tracks);
+	 * 4. the first transport in use whose setlist contains the track.
 	 */
-	async triggerCue(cueId: string, playmode: PlayMode, forceGlobal: boolean): Promise<void> {
+	private autoTransport(cue: Cue): TransportInfo | undefined {
+		const inUse = this.state.transports
+		const current = inUse.find((t) => t.name === this.state.currentTransport)
+		const inSetlist = (t: TransportInfo) => t.setList?.tracks.some((track) => track.uid === cue.trackUid) ?? false
+
+		if (current && this.trackOf(current) === cue.trackUid) return current
+		const playing = inUse.find((t) => this.trackOf(t) === cue.trackUid)
+		if (playing) return playing
+		if (current && inSetlist(current)) return current
+		return inUse.find(inSetlist)
+	}
+
+	/**
+	 * Jump to a cue. `transportOption` is "auto" (see autoTransport) or a transport name.
+	 * A cue on another track than the transport's one is reached with a global jump: Designer switches
+	 * the transport to that track (within its setlist). The jump is confirmed through the playhead.
+	 */
+	async triggerCue(cueId: string, playmode: PlayMode, transportOption: string, forceGlobal: boolean): Promise<void> {
 		const api = this.getApi()
 		const cue = this.state.cues.find((c) => c.id === cueId)
-		const transport = this.state.transports[0]
-		const onOtherTrack = !!cue && !!transport && transport.currentTrack?.uid !== cue.trackUid
+		const option = String(transportOption ?? '').trim() || TRANSPORT_AUTO
 
+		let transport: TransportInfo | undefined
+		if (option === TRANSPORT_AUTO) {
+			if (cue) {
+				transport = this.autoTransport(cue)
+				if (!transport) {
+					throw new Error(`Cue ${cueId}: track "${cue.trackName}" is not in the setlist of any transport in use`)
+				}
+			} else {
+				// Unknown cue (cue list not read yet / just created) - let Designer's current transport look for it
+				transport = this.mainTransport
+			}
+		} else {
+			transport =
+				this.state.transports.find((t) => t.name === option) ??
+				(await api.getTransports()).find((t) => t.name === option)
+			if (!transport) throw new Error(`Transport "${option}" not found`)
+		}
+		if (!transport) {
+			await api.goToCue(cueId, playmode, forceGlobal)
+			return
+		}
+
+		const onOtherTrack = !!cue && this.trackOf(transport) !== cue.trackUid
 		if (cue && onOtherTrack && transport.setList && !transport.setList.tracks.some((t) => t.uid === cue.trackUid)) {
 			throw new Error(
 				`Cue ${cueId} is on track "${cue.trackName}", which is not in the setlist of transport "${transport.name}"`,
@@ -621,16 +721,29 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 
 		const global = forceGlobal || onOtherTrack
+		this.log('debug', `Cue ${cueId} -> transport "${transport.name}"${global ? ' (global jump)' : ''}`)
 		try {
-			// Address the transport explicitly: with a multi-transport an empty locator may pick another one
-			await api.goToCue(cueId, playmode, global, transport ? { uid: transport.uid } : undefined)
+			await api.goToCue(cueId, playmode, global, { uid: transport.uid })
 		} catch (e) {
 			// With allowGlobalJump Designer answers "Not every transport has been moved" even after a
-			// successful jump - tolerated when the cue is known to exist in the transport's setlist
+			// successful jump - tolerated for a known cue, then confirmed through the playhead below
 			const falseWarning =
 				global && !!cue && e instanceof DisguiseCommandError && e.message.includes('Not every transport has been moved')
 			if (!falseWarning) throw e
 		}
+
+		if (cue && onOtherTrack) await this.confirmTrack(transport, cue)
+	}
+
+	/** Wait until the playhead of the transport reports the cue's track (only for subscribed transports) */
+	private async confirmTrack(transport: TransportInfo, cue: Cue): Promise<void> {
+		if (!this.state.playheads.some((p) => p.uid === transport.uid)) return
+		const deadline = Date.now() + JUMP_CONFIRM_MS
+		while (Date.now() < deadline) {
+			if (this.state.playheads.find((p) => p.uid === transport.uid)?.trackUid === cue.trackUid) return
+			await new Promise((resolve) => setTimeout(resolve, 50))
+		}
+		throw new Error(`Transport "${transport.name}" did not switch to track "${cue.trackName}" for cue ${cue.id}`)
 	}
 
 	/** Remember the last cue triggered from Companion (independent of the playhead) */

@@ -133,73 +133,88 @@ export class DisguiseApi {
 		return value as RawTrackCues[]
 	}
 
-	// --- Commands (always on the active transport) ---
-
-	private async simple(path: string): Promise<void> {
-		await this.request('POST', `transport/${path}`, { transports: [{}] })
+	/** Every transport of the project, engaged or not (multi-transports are listed separately and ignored here) */
+	async getTransports(): Promise<TransportInfo[]> {
+		return (
+			(await this.request<{ status: ApiStatus; transports?: TransportInfo[] }>('GET', 'transport/transports'))
+				.transports ?? []
+		)
 	}
 
-	private async withPlaymode(path: string, info: Record<string, unknown>, playmode?: PlayMode): Promise<void> {
-		const entry: Record<string, unknown> = { transport: {}, ...info }
+	// --- Commands ---
+	// `transport` selects the transport; an empty locator ({}) lets Designer use its current transport
+	// (with a multi-transport: the one whose timeline is selected)
+
+	private async simple(path: string, transport: Locator): Promise<void> {
+		await this.request('POST', `transport/${path}`, { transports: [transport] })
+	}
+
+	private async withPlaymode(
+		path: string,
+		transport: Locator,
+		info: Record<string, unknown>,
+		playmode?: PlayMode,
+	): Promise<void> {
+		const entry: Record<string, unknown> = { transport, ...info }
 		if (playmode && playmode !== 'NotSet') entry.playmode = playmode
 		await this.request('POST', `transport/${path}`, { transports: [entry] })
 	}
 
-	async play(): Promise<void> {
-		await this.simple('play')
+	async play(transport: Locator = {}): Promise<void> {
+		await this.simple('play', transport)
 	}
 
-	async playSection(): Promise<void> {
-		await this.simple('playsection')
+	async playSection(transport: Locator = {}): Promise<void> {
+		await this.simple('playsection', transport)
 	}
 
-	async playLoopSection(): Promise<void> {
-		await this.simple('playloopsection')
+	async playLoopSection(transport: Locator = {}): Promise<void> {
+		await this.simple('playloopsection', transport)
 	}
 
-	async stop(): Promise<void> {
-		await this.simple('stop')
+	async stop(transport: Locator = {}): Promise<void> {
+		await this.simple('stop', transport)
 	}
 
-	async returnToStart(): Promise<void> {
-		await this.simple('returntostart')
+	async returnToStart(transport: Locator = {}): Promise<void> {
+		await this.simple('returntostart', transport)
 	}
 
-	/** Without a transport the command goes to Designer's current transport (not always the first one in use) */
-	async goToCue(cue: string, playmode?: PlayMode, allowGlobalJump = false, transport?: Locator): Promise<void> {
-		await this.withPlaymode(
-			'gototag',
-			{ transport: transport ?? {}, type: 'CUE', value: cue, allowGlobalJump },
-			playmode,
-		)
+	async goToCue(cue: string, playmode?: PlayMode, allowGlobalJump = false, transport: Locator = {}): Promise<void> {
+		await this.withPlaymode('gototag', transport, { type: 'CUE', value: cue, allowGlobalJump }, playmode)
 	}
 
-	async goToSection(index: number, playmode?: PlayMode): Promise<void> {
-		await this.withPlaymode('gotosection', { section: String(index) }, playmode)
+	async goToSection(index: number, playmode?: PlayMode, transport: Locator = {}): Promise<void> {
+		await this.withPlaymode('gotosection', transport, { section: String(index) }, playmode)
 	}
 
-	async goToNextSection(playmode?: PlayMode): Promise<void> {
-		await this.withPlaymode('gotonextsection', {}, playmode)
+	async goToNextSection(playmode?: PlayMode, transport: Locator = {}): Promise<void> {
+		await this.withPlaymode('gotonextsection', transport, {}, playmode)
 	}
 
-	async goToPrevSection(playmode?: PlayMode): Promise<void> {
-		await this.withPlaymode('gotoprevsection', {}, playmode)
+	async goToPrevSection(playmode?: PlayMode, transport: Locator = {}): Promise<void> {
+		await this.withPlaymode('gotoprevsection', transport, {}, playmode)
 	}
 
-	async goToTrack(track: Locator, playmode?: PlayMode): Promise<void> {
-		await this.withPlaymode('gototrack', { track }, playmode)
+	async goToTrack(track: Locator, playmode?: PlayMode, transport: Locator = {}): Promise<void> {
+		await this.withPlaymode('gototrack', transport, { track }, playmode)
 	}
 
-	async goToNextTrack(playmode?: PlayMode): Promise<void> {
-		await this.withPlaymode('gotonexttrack', {}, playmode)
+	async goToNextTrack(playmode?: PlayMode, transport: Locator = {}): Promise<void> {
+		await this.withPlaymode('gotonexttrack', transport, {}, playmode)
 	}
 
-	async goToPrevTrack(playmode?: PlayMode): Promise<void> {
-		await this.withPlaymode('gotoprevtrack', {}, playmode)
+	async goToPrevTrack(playmode?: PlayMode, transport: Locator = {}): Promise<void> {
+		await this.withPlaymode('gotoprevtrack', transport, {}, playmode)
 	}
 
-	async goToTimecode(timecode: string, ignoreTags: boolean, playmode?: PlayMode): Promise<void> {
-		await this.withPlaymode('gototimecode', { timecode, ignoreTags }, playmode)
+	async goToTimecode(
+		timecode: string,
+		ignoreTags: boolean,
+		playmode?: PlayMode,
+		transport: Locator = {},
+	): Promise<void> {
+		await this.withPlaymode('gototimecode', transport, { timecode, ignoreTags }, playmode)
 	}
 }
 
