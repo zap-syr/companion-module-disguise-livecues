@@ -6,14 +6,15 @@ presets - one group per track - together with the note placed on each cue.
 
 ### Configuration
 
-| Field                                    | Description                                                                                                                                                                                                             |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Designer IP / hostname                   | The director machine of the session                                                                                                                                                                                     |
-| HTTP port                                | Designer API port (default `80`)                                                                                                                                                                                        |
-| Polling interval (ms)                    | How often the list of transports in use and their setlists are read (default 2000; playmode and playhead come live through Live Update). Also the reconnect interval when Designer is unreachable (backs off up to 5 s) |
-| Request timeout (ms)                     | Time after which a request counts as failed                                                                                                                                                                             |
-| Automatic cue list updates (Live Update) | On: Designer pushes the cue list whenever cues or notes change. Off: no continuous load on Designer - the cue list is read on connect and by the **Refresh cue list** action only (large projects)                      |
-| Cue list update interval (ms)            | How often Designer re-evaluates the cue list (default 3000). Each evaluation costs ~10 ms of Designer main thread per 100 tracks - larger values mean less load                                                         |
+| Field                                       | Description                                                                                                                                                                                                             |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Designer IP / hostname                      | The director machine of the session                                                                                                                                                                                     |
+| HTTP port                                   | Designer API port (default `80`)                                                                                                                                                                                        |
+| Polling interval (ms)                       | How often the list of transports in use and their setlists are read (default 2000; playmode and playhead come live through Live Update). Also the reconnect interval when Designer is unreachable (backs off up to 5 s) |
+| Request timeout (ms)                        | Time after which a request counts as failed                                                                                                                                                                             |
+| Automatic cue list updates (Live Update)    | On: Designer pushes the cue list whenever cues or notes change. Off: no continuous load on Designer - the cue list is read on connect and by the **Refresh cue list** action only (large projects)                      |
+| Cue list update interval (ms)               | How often Designer re-evaluates the cue list (default 3000). Each evaluation costs ~10 ms of Designer main thread per 100 tracks - larger values mean less load                                                         |
+| Cue presets per transport (multi-transport) | With a multi-transport, add a cue preset section per transport (default on). Turn off for large projects to keep the preset list short                                                                                  |
 
 The connection status shows **Connection failure / Disconnected** while Designer is
 unreachable and a warning when Designer runs but has no project open, or when the Live Update
@@ -47,7 +48,11 @@ specific transport go to it, as Designer does itself.
   (only `CUE <n>` when the cue has no note). Rebuilt automatically when cues are added, removed or
   edited; notes on already placed buttons follow edits in Designer through variables. A button
   turns dark green while its cue is the current cue of any transport and dark yellow while it is
-  the next cue.
+  the next cue. These buttons use the Auto transport.
+- **Cues - <transport>** - only with a multi-transport (and the **Cue presets per transport**
+  option on): one section per transport, one group per track of its setlist. These cue buttons
+  always trigger on that transport, light only from its playhead and show the transport name
+  small in the top right corner.
 - **Transport** - Play / Section / Loop / Stop / Start / Next / Previous, lit by the playmode: one
   group for the transport selected in Designer and one group per transport in use (with a status
   button: track, current cue, time - green while playing).

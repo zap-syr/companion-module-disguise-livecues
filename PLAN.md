@@ -279,6 +279,20 @@ commands given outside Companion.
   button (track, current cue, time) of that transport.
 - Groups follow the transports in use; presets are rebuilt only when that list changes.
 
+### Stage 6b. Cue presets per transport (multi-transport) - ✅ (verified in Companion)
+
+- Only while more than one transport is in use (a multi-transport is selected) and the new
+  config checkbox **"Cue presets per transport (multi-transport)"** is on (default on - can be
+  turned off for large projects: ~500 cues x 3 transports = ~1500 extra presets).
+- One preset **section per transport**: `Cues - <transport>`, with one group per track of that
+  transport's setlist (setlist order), only tracks with cues.
+- Each cue button is bound to that transport: Go to cue with transport = its name (switches the
+  transport to the cue's track when needed), `cue_active` / `cue_next` feedbacks with
+  transport = its name, so it lights only from that transport's playhead.
+- Same layout as the Auto cue buttons, plus the transport name small in the top right corner.
+- Preset ids `cue_tr_<transport>_<cue>`; rebuilt only when the cue list, the transports in use
+  or their setlists change. Without a multi-transport the sections disappear.
+
 ### Stage 7. Documentation and release - partial
 
 - `companion/HELP.md`, `manifest.json`, `package.json` - ✅

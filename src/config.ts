@@ -7,6 +7,7 @@ export type ModuleConfig = {
 	timeout: number
 	cueAutoUpdate: boolean
 	cueUpdateInterval: number
+	cuePresetsPerTransport: boolean
 }
 
 export const DEFAULT_POLL_INTERVAL = 2000
@@ -80,6 +81,15 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			min: 1000,
 			max: 10000,
 			isVisibleExpression: '$(options:cueAutoUpdate)',
+		},
+		{
+			type: 'checkbox',
+			id: 'cuePresetsPerTransport',
+			width: 6,
+			label: 'Cue presets per transport (multi-transport)',
+			tooltip:
+				'With a multi-transport, add a "Cues - <transport>" preset section per transport whose cue buttons always trigger and light on that transport. Turn off for large projects to keep the preset list short.',
+			default: true,
 		},
 	]
 }

@@ -18,6 +18,9 @@ const GREY = 0x303030
 
 /** Share of the button height used by the note; the cue number takes the rest */
 const NOTE_HEIGHT = 65
+/** Height of the transport name strip on the top of cue buttons bound to a transport */
+const TRANSPORT_LABEL_HEIGHT = 14
+const LABEL_GREY = 0xbbbbbb
 
 type PresetDefinition = CompanionPresetDefinitions<ModuleSchema>[string]
 
@@ -25,19 +28,25 @@ type PresetDefinition = CompanionPresetDefinitions<ModuleSchema>[string]
  * Cue button: "CUE <n>" alone when the cue has no note, otherwise the note on the top 65 %
  * and the cue number on the bottom 35 %. A simple preset is kept as a fallback for hosts
  * without layered buttons (Bitfocus Buttons).
+ *
+ * Without `transport` the button uses Auto and lights from any transport; with it the button
+ * is bound to that transport (and shows its name small in the top right corner).
  */
-function cuePreset(label: string, cue: Cue): PresetDefinition {
-	const name = cue.note ? `Cue ${cue.id} - ${cue.note}` : `Cue ${cue.id}`
+function cuePreset(label: string, cue: Cue, transport?: string): PresetDefinition {
+	const name = (cue.note ? `Cue ${cue.id} - ${cue.note}` : `Cue ${cue.id}`) + (transport ? ` (${transport})` : '')
 	// The note comes from a variable, so placed buttons follow note edits in Designer
 	const noteText = `$(${label}:cue_${cue.varId}_note)`
 	const cueText = `CUE ${cue.id}`
+	const feedbackTransport = transport ?? ANY_TRANSPORT
+	// Leave room for the transport name above the note / cue number
+	const top = transport ? TRANSPORT_LABEL_HEIGHT : 0
 
 	const steps: CompanionButtonStepActions<ModuleSchema>[] = [
 		{
 			down: [
 				{
 					actionId: 'go_to_cue',
-					options: { cue: cue.id, transport: TRANSPORT_AUTO, playmode: 'PlaySection', global: false },
+					options: { cue: cue.id, transport: transport ?? TRANSPORT_AUTO, playmode: 'PlaySection', global: false },
 				},
 			],
 			up: [],
@@ -47,6 +56,23 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 	const elements: SomeButtonGraphicsElement[] = [
 		{ type: 'box', id: 'bg', name: 'Background', x: 0, y: 0, width: 100, height: 100, color: BLACK },
 	]
+	if (transport) {
+		elements.push({
+			type: 'text',
+			id: 'transport',
+			name: 'Transport',
+			x: 0,
+			y: 0,
+			width: 96,
+			height: TRANSPORT_LABEL_HEIGHT,
+			text: transport,
+			fontsize: 90,
+			fontsizeAllowShrink: true,
+			color: LABEL_GREY,
+			halign: 'right',
+			valign: 'top',
+		})
+	}
 	if (cue.note) {
 		elements.push(
 			{
@@ -54,9 +80,9 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 				id: 'note',
 				name: 'Note',
 				x: 0,
-				y: 0,
+				y: top,
 				width: 100,
-				height: NOTE_HEIGHT,
+				height: NOTE_HEIGHT - top,
 				text: noteText,
 				fontsize: 40,
 				fontsizeAllowShrink: true,
@@ -86,9 +112,9 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 			id: 'cue',
 			name: 'Cue number',
 			x: 0,
-			y: 0,
+			y: top,
 			width: 100,
-			height: 100,
+			height: 100 - top,
 			text: cueText,
 			fontsize: 40,
 			fontsizeAllowShrink: true,
@@ -111,14 +137,14 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 				feedbacks: [
 					{
 						feedbackId: 'cue_next',
-						options: { cue: cue.id, transport: ANY_TRANSPORT },
+						options: { cue: cue.id, transport: feedbackTransport },
 						styleOverrides: [
 							{ elementId: 'bg', elementProperty: 'color', override: { isExpression: false, value: CUE_NEXT_COLOR } },
 						],
 					},
 					{
 						feedbackId: 'cue_active',
-						options: { cue: cue.id, transport: ANY_TRANSPORT },
+						options: { cue: cue.id, transport: feedbackTransport },
 						styleOverrides: [
 							{
 								elementId: 'bg',
@@ -133,7 +159,7 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 				type: 'simple',
 				name,
 				style: {
-					text: cue.note ? `${noteText}\n${cueText}` : cueText,
+					text: (transport ? `${transport}\n` : '') + (cue.note ? `${noteText}\n${cueText}` : cueText),
 					size: 'auto',
 					color: WHITE,
 					bgcolor: BLACK,
@@ -142,12 +168,12 @@ function cuePreset(label: string, cue: Cue): PresetDefinition {
 				feedbacks: [
 					{
 						feedbackId: 'cue_next',
-						options: { cue: cue.id, transport: ANY_TRANSPORT },
+						options: { cue: cue.id, transport: feedbackTransport },
 						style: { bgcolor: CUE_NEXT_COLOR, color: WHITE },
 					},
 					{
 						feedbackId: 'cue_active',
-						options: { cue: cue.id, transport: ANY_TRANSPORT },
+						options: { cue: cue.id, transport: feedbackTransport },
 						style: { bgcolor: CUE_CURRENT_COLOR, color: WHITE },
 					},
 				],
@@ -179,6 +205,35 @@ export function UpdatePresets(self: ModuleInstance): void {
 			presets: presetIds,
 		})
 	}
+	// --- Cues per transport: only with a multi-transport (more than one transport in use) ---
+	const transportCueSections: CompanionPresetSection[] = []
+	if (self.config.cuePresetsPerTransport !== false && self.state.transports.length > 1) {
+		for (const transport of self.state.transports) {
+			const varId = transportVarId(transport.name)
+			const groups: CompanionPresetGroup[] = []
+			// Tracks of this transport's setlist, in setlist order - other tracks can not be reached from it
+			for (const setlistTrack of transport.setList?.tracks ?? []) {
+				const track = tracks.find((t) => t.uid === setlistTrack.uid)
+				if (!track || track.cues.length === 0) continue
+				const presetIds: string[] = []
+				for (const cue of track.cues) {
+					const id = `cue_tr_${varId}_${cue.varId}`
+					presetIds.push(id)
+					presets[id] = cuePreset(label, cue, transport.name)
+				}
+				groups.push({
+					id: `cues_tr_${varId}_track_${track.uid}`,
+					name: track.name,
+					description: `${track.cues.length} cue(s) - always triggered on transport "${transport.name}"`,
+					type: 'simple',
+					presets: presetIds,
+				})
+			}
+			if (groups.length === 0) continue
+			transportCueSections.push({ id: `cues_tr_${varId}`, name: `Cues - ${transport.name}`, definitions: groups })
+		}
+	}
+
 	if (cueGroups.length === 0) {
 		cueGroups.push({
 			id: 'cues_none',
@@ -351,6 +406,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 			name: 'Cues',
 			definitions: cueGroups,
 		},
+		...transportCueSections,
 		{
 			id: 'transport',
 			name: 'Transport',

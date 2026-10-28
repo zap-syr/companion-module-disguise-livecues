@@ -689,7 +689,8 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 
 		// Transport names are part of it: there is a transport preset group per transport in use
 		const presetSignature = JSON.stringify([
-			this.state.transports.map((t) => t.name),
+			// Setlists too: cue presets per transport only list the tracks of its setlist
+			this.state.transports.map((t) => [t.name, (t.setList?.tracks ?? []).map((track) => track.uid)]),
 			this.state.tracks.map((t) => [t.uid, t.name, t.cues.map((c) => [c.id, c.note])]),
 		])
 		const variableSignature = JSON.stringify([
