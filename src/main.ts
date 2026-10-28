@@ -114,6 +114,8 @@ const PLAYHEAD_EXPRESSION =
 const CURRENT_TRANSPORT_SUBSCRIPTION = 'currentTransport'
 /** Designer's current transport - with a multi-transport the one whose timeline is selected */
 const CURRENT_TRANSPORT_EXPRESSION = 'guisystem.currentTransportManager.description'
+/** Seconds a playhead may be before a cue and still count as on it (float noise only) */
+const CUE_TIME_TOLERANCE = 0.0005
 /** How long to wait for the playhead to confirm a global jump */
 const JUMP_CONFIRM_MS = 1500
 
@@ -512,10 +514,10 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	private updateCurrentCue(playhead: TransportPlayhead): boolean {
 		const track = this.state.tracks.find((t) => t.uid === playhead.trackUid)
 		const cues = track?.cues ?? []
-		// Half a frame of tolerance: a jump to a cue lands on its time up to float noise
-		const tolerance = playhead.fps > 0 ? 0.5 / playhead.fps : 0.01
+		// A jump to a cue lands on its time up to float noise, but at the end of a section Designer holds
+		// the playhead 2^-10 s (~1 ms) before the next cue - the tolerance must stay well below that
 		let index = -1
-		while (index + 1 < cues.length && cues[index + 1].time <= playhead.time + tolerance) index++
+		while (index + 1 < cues.length && cues[index + 1].time <= playhead.time + CUE_TIME_TOLERANCE) index++
 
 		const cue = cues[index]
 		const nextCue = cues[index + 1]

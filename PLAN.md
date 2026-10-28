@@ -170,8 +170,12 @@ playhead crossed 105 s. Not yet verified: transport names with special character
   names with other special characters), property
   `[str(object.player.track.uid), object.player.track.beatToTime(object.player.tRender)]`,
   `updateFrequencyMs` 150.
-- Current cue of a transport = last cue of its track with `time <= playhead` (half-frame
+- Current cue of a transport = last cue of its track with `time <= playhead` (0.5 ms
   tolerance); next cue = the following one.
+- Fixed: a half-frame tolerance was too large. At the end of a section (play to end of
+  section) Designer holds the playhead 2^-10 s (~1 ms) before the next cue (verified:
+  44.9990234375 before a cue at 45 s), which was counted as the next cue. A jump lands on
+  the cue time up to float noise only, so 0.5 ms covers it.
 - Feedbacks and variables are only updated when the current cue / track of a transport
   changes; time variables at most every 250 ms.
 - Feedbacks:
