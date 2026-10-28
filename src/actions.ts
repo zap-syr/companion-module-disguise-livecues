@@ -3,6 +3,7 @@ import type ModuleInstance from './main.js'
 import { TRANSPORT_AUTO, TRANSPORT_CURRENT, type ModuleSchema } from './main.js'
 
 type PlaymodeOption = 'NotSet' | 'Play' | 'PlaySection' | 'Loop' | 'Stop'
+export type SetPlaymodeOption = Exclude<PlaymodeOption, 'NotSet'>
 
 export type ActionsSchema = {
 	go_to_cue: { options: { cue: string; transport: string; playmode: PlaymodeOption; global: boolean } }
@@ -13,10 +14,7 @@ export type ActionsSchema = {
 	next_track: { options: { transport: string; playmode: PlaymodeOption } }
 	prev_track: { options: { transport: string; playmode: PlaymodeOption } }
 	go_to_timecode: { options: { timecode: string; ignoreTags: boolean; transport: string; playmode: PlaymodeOption } }
-	play: { options: { transport: string } }
-	play_section: { options: { transport: string } }
-	loop_section: { options: { transport: string } }
-	stop: { options: { transport: string } }
+	set_playmode: { options: { playmode: SetPlaymodeOption; transport: string } }
 	return_to_start: { options: { transport: string } }
 	refresh: { options: Record<string, never> }
 }
@@ -27,6 +25,13 @@ export const PLAYMODE_CHOICES: DropdownChoice<PlaymodeOption>[] = [
 	{ id: 'PlaySection', label: 'Play to end of section' },
 	{ id: 'Loop', label: 'Loop section' },
 	{ id: 'Stop', label: 'Stop (hold)' },
+]
+
+const SET_PLAYMODE_CHOICES: DropdownChoice<SetPlaymodeOption>[] = [
+	{ id: 'Play', label: 'Play' },
+	{ id: 'PlaySection', label: 'Play to end of section' },
+	{ id: 'Loop', label: 'Loop section' },
+	{ id: 'Stop', label: 'Stop' },
 ]
 
 const playmodeOption = (def: PlaymodeOption = 'NotSet') =>
@@ -194,25 +199,35 @@ export function UpdateActions(self: ModuleInstance): void {
 				)
 			},
 		},
-		play: {
-			name: 'Play',
-			options: [transportOption],
-			callback: async (event) => run(async () => self.getApi().play(locator(event.options.transport))),
-		},
-		play_section: {
-			name: 'Play to end of section',
-			options: [transportOption],
-			callback: async (event) => run(async () => self.getApi().playSection(locator(event.options.transport))),
-		},
-		loop_section: {
-			name: 'Loop section',
-			options: [transportOption],
-			callback: async (event) => run(async () => self.getApi().playLoopSection(locator(event.options.transport))),
-		},
-		stop: {
-			name: 'Stop',
-			options: [transportOption],
-			callback: async (event) => run(async () => self.getApi().stop(locator(event.options.transport))),
+		set_playmode: {
+			name: 'Set playmode',
+			description: 'Play, play to end of section, loop section or stop a transport',
+			options: [
+				{
+					id: 'playmode',
+					type: 'dropdown',
+					label: 'Playmode',
+					choices: SET_PLAYMODE_CHOICES,
+					default: 'Play',
+				},
+				transportOption,
+			],
+			callback: async (event) => {
+				const api = self.getApi()
+				const transport = locator(event.options.transport)
+				await run(async () => {
+					switch (event.options.playmode) {
+						case 'PlaySection':
+							return api.playSection(transport)
+						case 'Loop':
+							return api.playLoopSection(transport)
+						case 'Stop':
+							return api.stop(transport)
+						default:
+							return api.play(transport)
+					}
+				})
+			},
 		},
 		return_to_start: {
 			name: 'Return to start',

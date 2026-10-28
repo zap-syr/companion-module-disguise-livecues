@@ -31,7 +31,8 @@ websocket is down. The module keeps retrying and reconnects on its own.
 - **Go to section**, **Next / Previous section**
 - **Go to track**, **Next / Previous track**
 - **Go to timecode**
-- **Play**, **Play to end of section**, **Loop section**, **Stop**, **Return to start**
+- **Set playmode** - Play / Play to end of section / Loop section / Stop
+- **Return to start**
 - **Refresh cue list** - read the cues and notes of all tracks now
 
 All transport actions have a **Transport** option: **Current** (default) or a transport name.

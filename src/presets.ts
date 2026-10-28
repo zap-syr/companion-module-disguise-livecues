@@ -196,10 +196,10 @@ export function UpdatePresets(self: ModuleInstance): void {
 		keyof ModuleSchema['actions'],
 		('Play' | 'PlaySection' | 'Loop' | 'Stop')?,
 	][] = [
-		['play', '⏵\nPLAY', 'play', 'Play'],
-		['play_section', '⏵|\nSECTION', 'play_section', 'PlaySection'],
-		['loop_section', '⟳\nLOOP', 'loop_section', 'Loop'],
-		['stop', '⏸\nSTOP', 'stop', 'Stop'],
+		['play', '⏵\nPLAY', 'set_playmode', 'Play'],
+		['play_section', '⏵|\nSECTION', 'set_playmode', 'PlaySection'],
+		['loop_section', '⟳\nLOOP', 'set_playmode', 'Loop'],
+		['stop', '⏸\nSTOP', 'set_playmode', 'Stop'],
 		['return_to_start', '⏮\nSTART', 'return_to_start'],
 		['prev_section', 'SECTION\n◀', 'prev_section'],
 		['next_section', 'SECTION\n▶', 'next_section'],
@@ -219,8 +219,9 @@ export function UpdatePresets(self: ModuleInstance): void {
 					down: [
 						{
 							actionId,
-							options:
-								actionId.includes('_section') || actionId.includes('_track')
+							options: playmode
+								? { playmode, transport: TRANSPORT_CURRENT }
+								: actionId.includes('_section') || actionId.includes('_track')
 									? { transport: TRANSPORT_CURRENT, playmode: 'NotSet' }
 									: { transport: TRANSPORT_CURRENT },
 						},

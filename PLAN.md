@@ -226,6 +226,9 @@ rebuild presets.
 - Transport option for Play / Stop / Play section / Loop / Return to start / section and
   track navigation: `Current` (default - Designer's current transport, as Designer itself
   does for a command without a locator) or a transport name.
+- Follow-up: the Play / Play to end of section / Loop section / Stop actions are merged into
+  one **Set playmode** action (`set_playmode`: playmode + transport). No upgrade script -
+  existing buttons are re-created by hand (module not released yet).
 
 ### Stage 6. Optimisation - TODO
 
