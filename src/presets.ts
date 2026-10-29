@@ -404,7 +404,7 @@ const GO_CUE_COLOR = 0xffc080
 
 /**
  * GO / BACK button of a transport ("current" or a name): the label large, below it the cue it jumps
- * to and its note, or a dash when there is none
+ * to and its note, or NO CUE when there is none
  */
 function goPreset(label: string, direction: 'next' | 'prev', transport: string): PresetDefinition {
 	const isGo = direction === 'next'
@@ -440,7 +440,7 @@ function goPreset(label: string, direction: 'next' | 'prev', transport: string):
 						color: LABEL_GREY,
 						enabled: expr(`${noteVar} != ''`),
 					}),
-					textElement('no_cue', 'No cue', GO_CUE_TOP, 100 - GO_CUE_TOP, '—', 50, {
+					textElement('no_cue', 'No cue', GO_CUE_TOP, 100 - GO_CUE_TOP, 'NO CUE', 50, {
 						enabled: expr(`${cueVar} == ''`),
 					}),
 				],
@@ -647,7 +647,7 @@ function connectionPreset(steps: CompanionButtonStepActions<ModuleSchema>[]): Pr
 
 /**
  * Status button of the current ("now") or next cue of the selected transport: a small header,
- * "CUE <n>" and its note. Expressions switch the layout when the cue has no note, and show a dash
+ * "CUE <n>" and its note. Expressions switch the layout when the cue has no note, and show NO CUE
  * when there is no cue.
  */
 function statusCuePreset(label: string, kind: 'now' | 'next'): PresetDefinition {
@@ -672,7 +672,7 @@ function statusCuePreset(label: string, kind: 'now' | 'next'): PresetDefinition 
 		textElement('cue_only', 'Cue number (no note)', top, 100 - top, cueText, 50, {
 			enabled: expr(`${hasCue} && ${noteVar} == ''`),
 		}),
-		textElement('no_cue', 'No cue', top, 100 - top, '—', 50, { enabled: expr(`${cueVar} == ''`) }),
+		textElement('no_cue', 'No cue', top, 100 - top, 'NO CUE', 50, { enabled: expr(`${cueVar} == ''`) }),
 	]
 
 	return {
