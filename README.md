@@ -1,4 +1,4 @@
-# companion-module-disguise-livecues
+# companion-module-disguise-cue-control
 
 Bitfocus Companion module for Disguise Designer: cue triggering, timeline playmode and presets generated automatically from the cues of the active track. Implementation plan: [PLAN.md](./PLAN.md).
 

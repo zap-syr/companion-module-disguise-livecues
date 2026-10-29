@@ -1,6 +1,6 @@
 {
-	"name": "companion-module-disguise-livecues",
-	"version": "0.1.0",
+	"name": "companion-module-disguise-cue-control",
+	"version": "1.0.0",
 	"main": "dist/main.js",
 	"type": "module",
 	"scripts": {
@@ -16,7 +16,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/bitfocus/companion-module-disguise-livecues.git"
+		"url": "git+https://github.com/bitfocus/companion-module-disguise-cue-control.git"
 	},
 	"engines": {
 		"node": "^26",

@@ -1,14 +1,14 @@
 {
 	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
 	"type": "connection",
-	"id": "disguise-livecues",
-	"name": "Disguise Live Cues",
+	"id": "disguise-cue-control",
+	"name": "Disguise Cue Control",
 	"shortname": "disguise",
 	"description": "Trigger cues and control the timeline playmode of Disguise Designer, with presets generated automatically from the cues and notes of the active track",
-	"version": "0.0.0",
+	"version": "1.0.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/bitfocus/companion-module-disguise-livecues.git",
-	"bugs": "https://github.com/bitfocus/companion-module-disguise-livecues/issues",
+	"repository": "git+https://github.com/bitfocus/companion-module-disguise-cue-control.git",
+	"bugs": "https://github.com/bitfocus/companion-module-disguise-cue-control/issues",
 	"maintainers": [
 		{
 			"name": "Aleksei Vlasov",
@@ -23,6 +23,6 @@
 	},
 	"legacyIds": [],
 	"manufacturer": "Disguise",
-	"products": ["Designer"],
+	"products": ["Cue Control"],
 	"keywords": ["Media Server", "Cue", "Timeline", "Show Control", "d3"]
 }

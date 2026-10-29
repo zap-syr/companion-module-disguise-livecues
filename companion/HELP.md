@@ -1,4 +1,4 @@
-## Disguise Live Cues
+## Disguise Cue Control
 
 Controls Disguise Designer (tested on r34.2) through the Session REST API and the Live Update
 websocket. The cues of every track in the project are read automatically and turned into
