@@ -175,8 +175,9 @@ function cuePreset(label: string, cue: Cue, transport?: string): PresetDefinitio
 				type: 'simple',
 				name,
 				style: {
-					// Always with the note line, so a note added later shows up (the line is empty without a note)
-					text: (transport ? `${transport}\n` : '') + `${noteText}\n${cueText}`,
+					// The module builds the text (note and cue number) in a variable, so a note added later shows
+					// up and an empty note leaves no stray newline (Buttons shows it as a literal "\n")
+					text: (transport ? `${transport}\n` : '') + `$(${label}:cue_${cue.varId}_label)`,
 					size: 'auto',
 					color: WHITE,
 					bgcolor: BLACK,
@@ -450,7 +451,12 @@ function goPreset(label: string, direction: 'next' | 'prev', transport: string):
 			{
 				type: 'simple',
 				name,
-				style: { text: `${title}\nCUE ${cueVar}\n${noteVar}`, size: 'auto', color: WHITE, bgcolor },
+				style: {
+					text: `${title}\n$(${label}:${varPrefix}${direction}_cue_label)`,
+					size: 'auto',
+					color: WHITE,
+					bgcolor,
+				},
 				steps,
 				feedbacks: [],
 			},
@@ -683,7 +689,7 @@ function statusCuePreset(label: string, kind: 'now' | 'next'): PresetDefinition 
 				type: 'simple',
 				name,
 				style: {
-					text: `${header}\n${cueText}\n${noteVar}`,
+					text: `${header}\n$(${label}:${prefix}_cue_label)`,
 					size: 'auto',
 					color: WHITE,
 					bgcolor: GREY,

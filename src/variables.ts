@@ -1,6 +1,6 @@
 import type { CompanionVariableDefinitions, CompanionVariableValues } from '@companion-module/base'
 import type ModuleInstance from './main.js'
-import type { TransportPlayhead, TransportPlaymode } from './main.js'
+import type { Cue, TransportPlayhead, TransportPlaymode } from './main.js'
 
 /** Playmode names short enough for a button row */
 const PLAYMODE_SHORT: Record<TransportPlaymode, string> = {
@@ -25,6 +25,9 @@ const PLAYHEAD_VARIABLES: [suffix: string, name: string][] = [
 	['next_cue_note', 'note of the next cue'],
 	['prev_cue', 'previous cue (before the current one)'],
 	['prev_cue_note', 'note of the previous cue'],
+	['cue_label', 'button text of the current cue (CUE <n> and its note, or NO CUE)'],
+	['next_cue_label', 'button text of the next cue'],
+	['prev_cue_label', 'button text of the previous cue'],
 	['time', 'playhead (HH:MM:SS:FF)'],
 	['time_to_next', 'time to the next cue (HH:MM:SS:FF)'],
 	['playmode', 'playmode (Play, PlaySection, Loop, Stop, HoldSection, HoldEnd)'],
@@ -59,6 +62,9 @@ export function UpdateVariableDefinitions(self: ModuleInstance): void {
 		prev_cue: { name: 'Previous cue (before the current one) of the selected transport' },
 		prev_cue_note: { name: 'Note of the previous cue of the selected transport' },
 		current_time: { name: 'Playhead of the selected transport (HH:MM:SS:FF)' },
+		current_cue_label: { name: 'Button text of the current cue: CUE <n> and its note, or NO CUE' },
+		next_cue_label: { name: 'Button text of the next cue: CUE <n> and its note, or NO CUE' },
+		prev_cue_label: { name: 'Button text of the previous cue: CUE <n> and its note, or NO CUE' },
 	}
 
 	for (const playhead of self.state.playheads) {
@@ -71,6 +77,7 @@ export function UpdateVariableDefinitions(self: ModuleInstance): void {
 		definitions[`cue_${cue.varId}_note`] = { name: `Cue ${cue.id}: note` }
 		definitions[`cue_${cue.varId}_time`] = { name: `Cue ${cue.id}: time in track (s)` }
 		definitions[`cue_${cue.varId}_track`] = { name: `Cue ${cue.id}: track` }
+		definitions[`cue_${cue.varId}_label`] = { name: `Cue ${cue.id}: button text (note and CUE ${cue.id})` }
 	}
 
 	self.setVariableDefinitions(definitions)
@@ -106,9 +113,20 @@ export function UpdateVariableValues(self: ModuleInstance): void {
 		values[`cue_${cue.varId}_note`] = cue.note
 		values[`cue_${cue.varId}_time`] = Math.round(cue.time * 1000) / 1000
 		values[`cue_${cue.varId}_track`] = cue.trackName
+		values[`cue_${cue.varId}_label`] = cue.note ? `${cue.note}\nCUE ${cue.id}` : `CUE ${cue.id}`
 	}
 
 	sendChanged(self, values)
+}
+
+/**
+ * Ready-made text of the status / GO / BACK buttons: "CUE <n>" and its note, or NO CUE.
+ * The simple presets (Bitfocus Buttons) show these labels, as a plain template leaves a stray
+ * newline when the note is empty and Buttons does not evaluate text expressions.
+ */
+function statusLabel(cue: Cue | undefined): string {
+	if (!cue) return 'NO CUE'
+	return cue.note ? `CUE ${cue.id}\n${cue.note}` : `CUE ${cue.id}`
 }
 
 /** Only the playhead variables - called on Live Update playhead changes */
@@ -126,6 +144,9 @@ function playheadValues(self: ModuleInstance): CompanionVariableValues {
 		values[`tr_${p.varId}_next_cue_note`] = p.nextCue?.note ?? ''
 		values[`tr_${p.varId}_prev_cue`] = p.prevCue?.id ?? ''
 		values[`tr_${p.varId}_prev_cue_note`] = p.prevCue?.note ?? ''
+		values[`tr_${p.varId}_cue_label`] = statusLabel(p.cue)
+		values[`tr_${p.varId}_next_cue_label`] = statusLabel(p.nextCue)
+		values[`tr_${p.varId}_prev_cue_label`] = statusLabel(p.prevCue)
 		values[`tr_${p.varId}_time`] = formatTimecode(p.time, p.fps)
 		values[`tr_${p.varId}_time_to_next`] = p.nextCue ? formatTimecode(p.nextCue.time - p.time, p.fps) : ''
 		values[`tr_${p.varId}_playmode`] = self.playmodeOf(p.name)
@@ -142,6 +163,9 @@ function playheadValues(self: ModuleInstance): CompanionVariableValues {
 	values.next_cue_note = first?.nextCue?.note ?? ''
 	values.prev_cue = first?.prevCue?.id ?? ''
 	values.prev_cue_note = first?.prevCue?.note ?? ''
+	values.current_cue_label = statusLabel(first?.cue)
+	values.next_cue_label = statusLabel(first?.nextCue)
+	values.prev_cue_label = statusLabel(first?.prevCue)
 	values.current_time = first ? formatTimecode(first.time, first.fps) : ''
 	return values
 }
