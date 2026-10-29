@@ -2,6 +2,7 @@ import type { ModuleSchema } from './main.js'
 import type ModuleInstance from './main.js'
 import { TRANSPORT_AUTO, TRANSPORT_CURRENT, transportVarId, type Cue } from './main.js'
 import { ANY_TRANSPORT, CUE_CURRENT_COLOR, CUE_NEXT_COLOR } from './feedbacks.js'
+import { TRANSPORT_ICONS } from './icons.js'
 import type {
 	CompanionButtonStepActions,
 	CompanionPresetDefinitions,
@@ -245,32 +246,43 @@ export function UpdatePresets(self: ModuleInstance): void {
 	}
 
 	// --- Transport ---
+	// Icons are PNGs (as in the Designer transport bar): the button fonts of Companion and Buttons
+	// lack most media control glyphs
 	const transportButtons: [
+		keyof typeof TRANSPORT_ICONS,
 		string,
 		string,
 		keyof ModuleSchema['actions'],
 		('Play' | 'PlaySection' | 'Loop' | 'Stop')?,
 	][] = [
-		['play', '⏵\nPLAY', 'set_playmode', 'Play'],
-		['play_section', '⏵|\nSECTION', 'set_playmode', 'PlaySection'],
-		['loop_section', '⟳\nLOOP', 'set_playmode', 'Loop'],
-		['stop', '⏸\nSTOP', 'set_playmode', 'Stop'],
-		['return_to_start', '⏮\nSTART', 'return_to_start'],
-		['prev_section', 'SECTION\n◀', 'prev_section'],
-		['next_section', 'SECTION\n▶', 'next_section'],
-		['prev_track', 'TRACK\n◀', 'prev_track'],
-		['next_track', 'TRACK\n▶', 'next_track'],
+		['play', 'Play', 'PLAY', 'set_playmode', 'Play'],
+		['play_section', 'Play section', 'SECTION', 'set_playmode', 'PlaySection'],
+		['loop_section', 'Loop section', 'LOOP', 'set_playmode', 'Loop'],
+		['stop', 'Stop', 'STOP', 'set_playmode', 'Stop'],
+		['return_to_start', 'Return to start', 'START', 'return_to_start'],
+		['prev_section', 'Previous section', 'SECTION', 'prev_section'],
+		['next_section', 'Next section', 'SECTION', 'next_section'],
+		['prev_track', 'Previous track', 'TRACK', 'prev_track'],
+		['next_track', 'Next track', 'TRACK', 'next_track'],
 	]
 	/** Transport buttons bound to `transport` ("current" or a transport name); returns their preset ids */
 	const addTransportButtons = (idPrefix: string, transport: string, nameSuffix: string): string[] => {
 		const ids: string[] = []
-		for (const [id, text, actionId, playmode] of transportButtons) {
+		for (const [id, name, text, actionId, playmode] of transportButtons) {
 			const presetId = `${idPrefix}_${id}`
 			ids.push(presetId)
 			presets[presetId] = {
 				type: 'simple',
-				name: text.replace('\n', ' ') + nameSuffix,
-				style: { text, size: 'auto', color: WHITE, bgcolor: BLACK },
+				name: name + nameSuffix,
+				style: {
+					text,
+					size: '14',
+					alignment: 'center:bottom',
+					png64: TRANSPORT_ICONS[id],
+					pngalignment: 'center:top',
+					color: WHITE,
+					bgcolor: BLACK,
+				},
 				steps: [
 					{
 						down: [
