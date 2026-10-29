@@ -5,8 +5,8 @@ import { TRANSPORT_CURRENT, type ModuleSchema, type TransportPlayhead, type Tran
 export const ANY_TRANSPORT = 'any'
 /** Dark green - the cue under the playhead */
 export const CUE_CURRENT_COLOR = 0x006600
-/** Dark yellow - the cue after the playhead */
-export const CUE_NEXT_COLOR = 0x663300
+/** Dark blue - the cue after the playhead */
+export const CUE_NEXT_COLOR = 0x000066
 
 export type FeedbacksSchema = {
 	connected: {

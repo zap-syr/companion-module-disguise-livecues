@@ -20,15 +20,16 @@ const GREY = 0x303030
 /** Share of the button height used by the note; the cue number takes the rest */
 const NOTE_HEIGHT = 65
 /** Height of the transport name strip on the top of cue buttons bound to a transport */
-const TRANSPORT_LABEL_HEIGHT = 14
+const TRANSPORT_LABEL_HEIGHT = 18
 const LABEL_GREY = 0xbbbbbb
 
 type PresetDefinition = CompanionPresetDefinitions<ModuleSchema>[string]
 
 /**
  * Cue button: "CUE <n>" alone when the cue has no note, otherwise the note on the top 65 %
- * and the cue number on the bottom 35 %. A simple preset is kept as a fallback for hosts
- * without layered buttons (Bitfocus Buttons).
+ * and the cue number on the bottom 35 %. Both layouts are on the button and switched by the
+ * note variable, so a placed button follows a note added or removed later in Designer.
+ * A simple preset is kept as a fallback for hosts without layered buttons (Bitfocus Buttons).
  *
  * Without `transport` the button uses Auto and lights from any transport; with it the button
  * is bound to that transport (and shows its name small in the top right corner).
@@ -38,6 +39,8 @@ function cuePreset(label: string, cue: Cue, transport?: string): PresetDefinitio
 	// The note comes from a variable, so placed buttons follow note edits in Designer
 	const noteText = `$(${label}:cue_${cue.varId}_note)`
 	const cueText = `CUE ${cue.id}`
+	const hasNote = { isExpression: true, value: `${noteText} != ''` } as const
+	const noNote = { isExpression: true, value: `${noteText} == ''` } as const
 	const feedbackTransport = transport ?? ANY_TRANSPORT
 	// Leave room for the transport name above the note / cue number
 	const top = transport ? TRANSPORT_LABEL_HEIGHT : 0
@@ -67,51 +70,51 @@ function cuePreset(label: string, cue: Cue, transport?: string): PresetDefinitio
 			width: 96,
 			height: TRANSPORT_LABEL_HEIGHT,
 			text: transport,
-			fontsize: 90,
+			fontsize: 100,
 			fontsizeAllowShrink: true,
 			color: LABEL_GREY,
 			halign: 'right',
 			valign: 'top',
 		})
 	}
-	if (cue.note) {
-		elements.push(
-			{
-				type: 'text',
-				id: 'note',
-				name: 'Note',
-				x: 0,
-				y: top,
-				width: 100,
-				height: NOTE_HEIGHT - top,
-				text: noteText,
-				fontsize: 40,
-				fontsizeAllowShrink: true,
-				color: WHITE,
-				halign: 'center',
-				valign: 'center',
-			},
-			{
-				type: 'text',
-				id: 'cue',
-				name: 'Cue number',
-				x: 0,
-				y: NOTE_HEIGHT,
-				width: 100,
-				height: 100 - NOTE_HEIGHT,
-				text: cueText,
-				fontsize: 50,
-				fontsizeAllowShrink: true,
-				color: WHITE,
-				halign: 'center',
-				valign: 'center',
-			},
-		)
-	} else {
-		elements.push({
+	elements.push(
+		{
+			type: 'text',
+			id: 'note',
+			name: 'Note',
+			enabled: hasNote,
+			x: 0,
+			y: top,
+			width: 100,
+			height: NOTE_HEIGHT - top,
+			text: noteText,
+			fontsize: 60,
+			fontsizeAllowShrink: true,
+			color: WHITE,
+			halign: 'center',
+			valign: 'center',
+		},
+		{
 			type: 'text',
 			id: 'cue',
-			name: 'Cue number',
+			name: 'Cue number (with note)',
+			enabled: hasNote,
+			x: 0,
+			y: NOTE_HEIGHT,
+			width: 100,
+			height: 100 - NOTE_HEIGHT,
+			text: cueText,
+			fontsize: 50,
+			fontsizeAllowShrink: true,
+			color: WHITE,
+			halign: 'center',
+			valign: 'center',
+		},
+		{
+			type: 'text',
+			id: 'cue_only',
+			name: 'Cue number (no note)',
+			enabled: noNote,
 			x: 0,
 			y: top,
 			width: 100,
@@ -122,8 +125,8 @@ function cuePreset(label: string, cue: Cue, transport?: string): PresetDefinitio
 			color: WHITE,
 			halign: 'center',
 			valign: 'center',
-		})
-	}
+		},
+	)
 
 	return {
 		type: 'alternatives',
@@ -160,7 +163,8 @@ function cuePreset(label: string, cue: Cue, transport?: string): PresetDefinitio
 				type: 'simple',
 				name,
 				style: {
-					text: (transport ? `${transport}\n` : '') + (cue.note ? `${noteText}\n${cueText}` : cueText),
+					// Always with the note line, so a note added later shows up (the line is empty without a note)
+					text: (transport ? `${transport}\n` : '') + `${noteText}\n${cueText}`,
 					size: 'auto',
 					color: WHITE,
 					bgcolor: BLACK,
