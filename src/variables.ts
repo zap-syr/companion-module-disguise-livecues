@@ -1,6 +1,17 @@
 import type { CompanionVariableDefinitions, CompanionVariableValues } from '@companion-module/base'
 import type ModuleInstance from './main.js'
-import type { TransportPlayhead } from './main.js'
+import type { TransportPlayhead, TransportPlaymode } from './main.js'
+
+/** Playmode names short enough for a button row */
+const PLAYMODE_SHORT: Record<TransportPlaymode, string> = {
+	Play: 'PLAY',
+	PlaySection: 'SECTION',
+	Loop: 'LOOP',
+	Stop: 'STOP',
+	HoldSection: 'HOLD',
+	HoldEnd: 'END',
+	'': '',
+}
 
 // Created dynamically: per cue (cue_<id>_note, cue_<id>_time, cue_<id>_track) for every cue of the
 // project, and per transport in use (tr_<transport>_...) from its Live Update playhead
@@ -12,9 +23,12 @@ const PLAYHEAD_VARIABLES: [suffix: string, name: string][] = [
 	['cue_note', 'note of the current cue'],
 	['next_cue', 'next cue'],
 	['next_cue_note', 'note of the next cue'],
+	['prev_cue', 'previous cue (before the current one)'],
+	['prev_cue_note', 'note of the previous cue'],
 	['time', 'playhead (HH:MM:SS:FF)'],
 	['time_to_next', 'time to the next cue (HH:MM:SS:FF)'],
 	['playmode', 'playmode (Play, PlaySection, Loop, Stop, HoldSection, HoldEnd)'],
+	['playmode_short', 'playmode, short for buttons (PLAY, SECTION, LOOP, STOP, HOLD, END)'],
 	['playing', 'playing (true/false)'],
 ]
 
@@ -41,6 +55,8 @@ export function UpdateVariableDefinitions(self: ModuleInstance): void {
 		current_cue_note: { name: 'Note of the current cue of the selected transport' },
 		next_cue: { name: 'Next cue of the selected transport' },
 		next_cue_note: { name: 'Note of the next cue of the selected transport' },
+		prev_cue: { name: 'Previous cue (before the current one) of the selected transport' },
+		prev_cue_note: { name: 'Note of the previous cue of the selected transport' },
 		current_time: { name: 'Playhead of the selected transport (HH:MM:SS:FF)' },
 	}
 
@@ -107,9 +123,12 @@ function playheadValues(self: ModuleInstance): CompanionVariableValues {
 		values[`tr_${p.varId}_cue_note`] = p.cue?.note ?? ''
 		values[`tr_${p.varId}_next_cue`] = p.nextCue?.id ?? ''
 		values[`tr_${p.varId}_next_cue_note`] = p.nextCue?.note ?? ''
+		values[`tr_${p.varId}_prev_cue`] = p.prevCue?.id ?? ''
+		values[`tr_${p.varId}_prev_cue_note`] = p.prevCue?.note ?? ''
 		values[`tr_${p.varId}_time`] = formatTimecode(p.time, p.fps)
 		values[`tr_${p.varId}_time_to_next`] = p.nextCue ? formatTimecode(p.nextCue.time - p.time, p.fps) : ''
 		values[`tr_${p.varId}_playmode`] = self.playmodeOf(p.name)
+		values[`tr_${p.varId}_playmode_short`] = PLAYMODE_SHORT[self.playmodeOf(p.name)]
 		values[`tr_${p.varId}_playing`] = p.playing
 	}
 	// The main transport: selected in Designer when in use, else the first in use
@@ -119,6 +138,8 @@ function playheadValues(self: ModuleInstance): CompanionVariableValues {
 	values.current_cue_note = first?.cue?.note ?? ''
 	values.next_cue = first?.nextCue?.id ?? ''
 	values.next_cue_note = first?.nextCue?.note ?? ''
+	values.prev_cue = first?.prevCue?.id ?? ''
+	values.prev_cue_note = first?.prevCue?.note ?? ''
 	values.current_time = first ? formatTimecode(first.time, first.fps) : ''
 	return values
 }

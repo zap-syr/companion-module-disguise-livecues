@@ -7,6 +7,8 @@ export type SetPlaymodeOption = Exclude<PlaymodeOption, 'NotSet'>
 
 export type ActionsSchema = {
 	go_to_cue: { options: { cue: string; transport: string; playmode: PlaymodeOption; global: boolean } }
+	go_next_cue: { options: { transport: string; playmode: PlaymodeOption } }
+	go_prev_cue: { options: { transport: string; playmode: PlaymodeOption } }
 	go_to_section: { options: { section: number; transport: string; playmode: PlaymodeOption } }
 	next_section: { options: { transport: string; playmode: PlaymodeOption } }
 	prev_section: { options: { transport: string; playmode: PlaymodeOption } }
@@ -105,6 +107,30 @@ export function UpdateActions(self: ModuleInstance): void {
 				await run(async () =>
 					self.triggerCue(cue, event.options.playmode, event.options.transport, event.options.global),
 				)
+				self.setLastCue(cue)
+			},
+		},
+		go_next_cue: {
+			name: 'GO - next cue',
+			description: 'Jump to the cue after the playhead of a transport (on its current track)',
+			options: [transportOption, playmodeOption('PlaySection')],
+			callback: async (event) => {
+				let cue = ''
+				await run(async () => {
+					cue = await self.goToAdjacentCue('next', event.options.playmode, event.options.transport)
+				})
+				self.setLastCue(cue)
+			},
+		},
+		go_prev_cue: {
+			name: 'BACK - previous cue',
+			description: 'Jump to the cue before the current cue of a transport (on its current track)',
+			options: [transportOption, playmodeOption('PlaySection')],
+			callback: async (event) => {
+				let cue = ''
+				await run(async () => {
+					cue = await self.goToAdjacentCue('prev', event.options.playmode, event.options.transport)
+				})
 				self.setLastCue(cue)
 			},
 		},

@@ -1,6 +1,13 @@
 import type { ModuleSchema } from './main.js'
 import type ModuleInstance from './main.js'
-import { TRANSPORT_AUTO, TRANSPORT_CURRENT, transportVarId, type Cue } from './main.js'
+import {
+	TRANSPORT_AUTO,
+	TRANSPORT_CURRENT,
+	transportVarId,
+	type Cue,
+	type TrackCues,
+	type TransportPlaymode,
+} from './main.js'
 import { ANY_TRANSPORT, CUE_CURRENT_COLOR, CUE_NEXT_COLOR } from './feedbacks.js'
 import { TRANSPORT_ICONS } from './icons.js'
 import {
@@ -278,6 +285,309 @@ function statusPreset(
 	}
 }
 
+/**
+ * Background per playmode, in feedback order: later feedbacks win, so the hold states come after
+ * PlaySection (whose feedback stays true while holding at the section end)
+ */
+const PLAYMODE_COLORS: [Exclude<TransportPlaymode, ''>, number][] = [
+	['Play', GREEN],
+	['PlaySection', 0x0050a0],
+	['Loop', 0x7000a0],
+	['Stop', RED],
+	['HoldSection', 0xa07800],
+	['HoldEnd', 0xa07800],
+]
+/** Most transports shown on one "all transports" playmode button */
+const MODES_PER_BUTTON = 4
+
+/** Feedbacks coloring the element `elementId` by the playmode of `transport` */
+function playmodeColorFeedbacks(elementId: string, transport: string) {
+	return PLAYMODE_COLORS.map(([playmode, color]) => ({
+		feedbackId: 'playmode' as const,
+		options: { playmode, transport },
+		styleOverrides: [{ elementId, elementProperty: 'color', override: { isExpression: false as const, value: color } }],
+	}))
+}
+
+/** Playmode of one transport: its name as header, the short playmode large, background by playmode */
+function playmodePreset(label: string, transport: string): PresetDefinition {
+	const name = `Playmode of transport ${transport}`
+	const mode = `$(${label}:tr_${transportVarId(transport)}_playmode_short)`
+	return {
+		type: 'alternatives',
+		variants: [
+			{
+				type: 'layered',
+				name,
+				canvas: STATUS_CANVAS,
+				elements: [
+					...statusBase(transport),
+					textElement('mode', 'Playmode', TRANSPORT_LABEL_HEIGHT, 100 - TRANSPORT_LABEL_HEIGHT, mode, 50),
+				],
+				steps: [],
+				feedbacks: playmodeColorFeedbacks('bg', transport),
+			},
+			{
+				type: 'simple',
+				name,
+				style: { text: `${transport}\n${mode}`, size: 'auto', color: WHITE, bgcolor: GREY },
+				steps: [],
+				feedbacks: PLAYMODE_COLORS.map(([playmode, color]) => ({
+					feedbackId: 'playmode' as const,
+					options: { playmode, transport },
+					style: { bgcolor: color, color: WHITE },
+				})),
+			},
+		],
+	}
+}
+
+/** Playmode of several transports: one row each (name left, short playmode right), row colored by playmode */
+function playmodesPreset(label: string, transports: string[], header: string): PresetDefinition {
+	const name = `Playmodes: ${transports.join(', ')}`
+	const rowHeight = (100 - TRANSPORT_LABEL_HEIGHT) / transports.length
+	const elements: SomeButtonGraphicsElement[] = [...statusBase(header)]
+	transports.forEach((transport, i) => {
+		const y = TRANSPORT_LABEL_HEIGHT + i * rowHeight
+		const mode = `$(${label}:tr_${transportVarId(transport)}_playmode_short)`
+		elements.push(
+			{
+				type: 'box',
+				id: `row${i}`,
+				name: `Row ${transport}`,
+				x: 0,
+				y: y + 1,
+				width: 100,
+				height: rowHeight - 2,
+				color: GREY,
+			},
+			textElement(`name${i}`, `Name ${transport}`, y, rowHeight, transport, 60, { x: 4, width: 46, halign: 'left' }),
+			textElement(`mode${i}`, `Playmode ${transport}`, y, rowHeight, mode, 60, { x: 50, width: 46, halign: 'right' }),
+		)
+	})
+	return {
+		type: 'alternatives',
+		variants: [
+			{
+				type: 'layered',
+				name,
+				canvas: STATUS_CANVAS,
+				elements,
+				steps: [],
+				feedbacks: transports.flatMap((transport, i) => playmodeColorFeedbacks(`row${i}`, transport)),
+			},
+			{
+				type: 'simple',
+				name,
+				style: {
+					text: transports
+						.map((transport) => `${transport}: $(${label}:tr_${transportVarId(transport)}_playmode_short)`)
+						.join('\n'),
+					size: 'auto',
+					color: WHITE,
+					bgcolor: GREY,
+				},
+				steps: [],
+				feedbacks: [],
+			},
+		],
+	}
+}
+
+/** Top of the cue number on the GO / BACK buttons; the GO / BACK label is above it */
+const GO_CUE_TOP = 45
+/** Top of the note on the GO / BACK buttons */
+const GO_NOTE_TOP = 70
+const GO_GREEN = 0x004d00
+
+/**
+ * GO / BACK button of a transport ("current" or a name): the label large, below it the cue it jumps
+ * to and its note, or a dash when there is none
+ */
+function goPreset(label: string, direction: 'next' | 'prev', transport: string): PresetDefinition {
+	const isGo = direction === 'next'
+	const title = isGo ? 'GO' : 'BACK'
+	const varPrefix = transport === TRANSPORT_CURRENT ? '' : `tr_${transportVarId(transport)}_`
+	const cueVar = `$(${label}:${varPrefix}${direction}_cue)`
+	const noteVar = `$(${label}:${varPrefix}${direction}_cue_note)`
+	const name =
+		(isGo ? 'GO - next cue' : 'BACK - previous cue') + (transport === TRANSPORT_CURRENT ? '' : ` (${transport})`)
+	const bgcolor = isGo ? GO_GREEN : GREY
+	const expr = (value: string) => ({ isExpression: true, value }) as const
+	const steps: CompanionButtonStepActions<ModuleSchema>[] = [
+		{
+			down: [{ actionId: isGo ? 'go_next_cue' : 'go_prev_cue', options: { transport, playmode: 'PlaySection' } }],
+			up: [],
+		},
+	]
+
+	return {
+		type: 'alternatives',
+		variants: [
+			{
+				type: 'layered',
+				name,
+				elements: [
+					{ type: 'box', id: 'bg', name: 'Background', x: 0, y: 0, width: 100, height: 100, color: bgcolor },
+					textElement('title', 'GO / BACK', 0, GO_CUE_TOP, title, 70),
+					textElement('cue', 'Cue number', GO_CUE_TOP, GO_NOTE_TOP - GO_CUE_TOP, `CUE ${cueVar}`, 50, {
+						enabled: expr(`${cueVar} != ''`),
+					}),
+					textElement('note', 'Note', GO_NOTE_TOP, 100 - GO_NOTE_TOP, noteVar, 50, {
+						color: LABEL_GREY,
+						enabled: expr(`${noteVar} != ''`),
+					}),
+					textElement('no_cue', 'No cue', GO_CUE_TOP, 100 - GO_CUE_TOP, '—', 50, {
+						enabled: expr(`${cueVar} == ''`),
+					}),
+				],
+				steps,
+				feedbacks: [],
+			},
+			{
+				type: 'simple',
+				name,
+				style: { text: `${title}\nCUE ${cueVar}\n${noteVar}`, size: 'auto', color: WHITE, bgcolor },
+				steps,
+				feedbacks: [],
+			},
+		],
+	}
+}
+
+/** GO and BACK presets of a transport, added to `presets`; returns their ids */
+function addGoButtons(
+	presets: CompanionPresetDefinitions<ModuleSchema>,
+	label: string,
+	idPrefix: string,
+	transport: string,
+): string[] {
+	presets[`${idPrefix}_go`] = goPreset(label, 'next', transport)
+	presets[`${idPrefix}_back`] = goPreset(label, 'prev', transport)
+	return [`${idPrefix}_go`, `${idPrefix}_back`]
+}
+
+/** Top of the cue count on the track buttons */
+const TRACK_COUNT_TOP = 70
+
+/**
+ * Track button: jumps a transport ("current" or a name) to the track, keeping its playmode.
+ * Shows the track name and its cue count, lit while the transport is on the track.
+ */
+function trackPreset(track: TrackCues, transport: string): PresetDefinition {
+	const isCurrent = transport === TRANSPORT_CURRENT
+	const name = `Track ${track.name}` + (isCurrent ? '' : ` (${transport})`)
+	const count = `${track.cues.length} CUE${track.cues.length === 1 ? '' : 'S'}`
+	// Leave room for the transport name above the track name
+	const top = isCurrent ? 0 : TRANSPORT_LABEL_HEIGHT
+	const steps: CompanionButtonStepActions<ModuleSchema>[] = [
+		{
+			down: [{ actionId: 'go_to_track', options: { track: track.name, transport, playmode: 'NotSet' } }],
+			up: [],
+		},
+	]
+	const feedbackOptions = { track: track.name, transport }
+
+	const elements: SomeButtonGraphicsElement[] = [
+		{ type: 'box', id: 'bg', name: 'Background', x: 0, y: 0, width: 100, height: 100, color: BLACK },
+		textElement('track', 'Track name', top, TRACK_COUNT_TOP - top, track.name, 60),
+		textElement('count', 'Cue count', TRACK_COUNT_TOP, 100 - TRACK_COUNT_TOP, count, 50, { color: LABEL_GREY }),
+	]
+	if (!isCurrent) {
+		elements.push(
+			textElement('transport', 'Transport', 0, TRANSPORT_LABEL_HEIGHT, transport, 100, {
+				width: 96,
+				color: LABEL_GREY,
+				halign: 'right',
+				valign: 'top',
+			}),
+		)
+	}
+
+	return {
+		type: 'alternatives',
+		variants: [
+			{
+				type: 'layered',
+				name,
+				elements,
+				steps,
+				feedbacks: [
+					{
+						feedbackId: 'track_active',
+						options: feedbackOptions,
+						styleOverrides: [
+							{
+								elementId: 'bg',
+								elementProperty: 'color',
+								override: { isExpression: false, value: CUE_CURRENT_COLOR },
+							},
+						],
+					},
+				],
+			},
+			{
+				type: 'simple',
+				name,
+				style: {
+					text: (isCurrent ? '' : `${transport}\n`) + `${track.name}\n${count}`,
+					size: 'auto',
+					color: WHITE,
+					bgcolor: BLACK,
+				},
+				steps,
+				feedbacks: [
+					{ feedbackId: 'track_active', options: feedbackOptions, style: { bgcolor: CUE_CURRENT_COLOR, color: WHITE } },
+				],
+			},
+		],
+	}
+}
+
+/**
+ * Track buttons: one group for the transport selected in Designer (every track of the project) and,
+ * with a multi-transport, one group per transport (the tracks of its setlist)
+ */
+function trackGroups(presets: CompanionPresetDefinitions<ModuleSchema>, self: ModuleInstance): CompanionPresetGroup[] {
+	const { tracks, transports } = self.state
+	const group = (id: string, name: string, description: string, list: TrackCues[], transport: string) => {
+		const ids = list.map((track) => {
+			const presetId = `${id}_${track.uid}`
+			presets[presetId] = trackPreset(track, transport)
+			return presetId
+		})
+		return { id, name, description, type: 'simple' as const, presets: ids }
+	}
+
+	const groups: CompanionPresetGroup[] = [
+		group(
+			'tracks_current',
+			'Selected transport',
+			'Jump the transport selected in Designer to a track (keeps its playmode)',
+			tracks,
+			TRANSPORT_CURRENT,
+		),
+	]
+	if (self.config.cuePresetsPerTransport !== false && transports.length > 1) {
+		for (const transport of transports) {
+			const setlist = (transport.setList?.tracks ?? [])
+				.map((t) => tracks.find((track) => track.uid === t.uid))
+				.filter((t): t is TrackCues => !!t)
+			if (setlist.length === 0) continue
+			groups.push(
+				group(
+					`tracks_tr_${transportVarId(transport.name)}`,
+					transport.name,
+					`Jump transport "${transport.name}" to a track of its setlist`,
+					setlist,
+					transport.name,
+				),
+			)
+		}
+	}
+	return groups
+}
+
 /** Connection status: "DISGUISE" header and OFFLINE on red, ONLINE on green while connected */
 function connectionPreset(steps: CompanionButtonStepActions<ModuleSchema>[]): PresetDefinition {
 	const name = 'Connection status'
@@ -500,7 +810,10 @@ export function UpdatePresets(self: ModuleInstance): void {
 			name: 'Transport (selected in Designer)',
 			description: 'Act on the transport selected in Designer (multi-transport: the selected timeline)',
 			type: 'simple',
-			presets: addTransportButtons('transport', TRANSPORT_CURRENT, ''),
+			presets: [
+				...addGoButtons(presets, label, 'transport', TRANSPORT_CURRENT),
+				...addTransportButtons('transport', TRANSPORT_CURRENT, ''),
+			],
 		},
 	]
 
@@ -532,9 +845,28 @@ export function UpdatePresets(self: ModuleInstance): void {
 			name: `Transport - ${transport.name}`,
 			description: `Act on transport "${transport.name}"`,
 			type: 'simple',
-			presets: [`${prefix}_status`, ...ids],
+			presets: [`${prefix}_status`, ...addGoButtons(presets, label, prefix, transport.name), ...ids],
 		})
 	}
+
+	// Playmodes of all transports on one button - multi-transport only, a few transports per button
+	const playmodeIds: string[] = []
+	const transportNames = self.state.transports.map((t) => t.name)
+	if (transportNames.length > 1) {
+		for (let start = 0; start < transportNames.length; start += MODES_PER_BUTTON) {
+			const chunk = transportNames.slice(start, start + MODES_PER_BUTTON)
+			const header = transportNames.length > MODES_PER_BUTTON ? `MODES ${start + 1}-${start + chunk.length}` : 'MODES'
+			const id = `status_playmodes_${start / MODES_PER_BUTTON}`
+			presets[id] = playmodesPreset(label, chunk, header)
+			playmodeIds.push(id)
+		}
+	}
+	// And one playmode button per transport, next to the status buttons
+	const transportPlaymodeIds = self.state.transports.map((transport) => {
+		const id = `status_playmode_${transportVarId(transport.name)}`
+		presets[id] = playmodePreset(label, transport.name)
+		return id
+	})
 
 	// --- Status ---
 	const refreshSteps: CompanionButtonStepActions<ModuleSchema>[] = [
@@ -567,6 +899,11 @@ export function UpdatePresets(self: ModuleInstance): void {
 		},
 		...transportCueSections,
 		{
+			id: 'tracks',
+			name: 'Tracks',
+			definitions: trackGroups(presets, self),
+		},
+		{
 			id: 'transport',
 			name: 'Transport',
 			definitions: transportGroups,
@@ -579,7 +916,21 @@ export function UpdatePresets(self: ModuleInstance): void {
 					id: 'status_buttons',
 					name: 'Status',
 					type: 'simple',
-					presets: ['status_connection', 'status_track', 'status_current_cue', 'status_next_cue', 'status_refresh'],
+					presets: [
+						'status_connection',
+						'status_track',
+						'status_current_cue',
+						'status_next_cue',
+						'status_refresh',
+						...playmodeIds,
+					],
+				},
+				{
+					id: 'status_playmode_buttons',
+					name: 'Playmode per transport',
+					description: 'One button per transport in use, colored by its playmode',
+					type: 'simple',
+					presets: transportPlaymodeIds,
 				},
 			],
 		},

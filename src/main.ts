@@ -80,6 +80,8 @@ export interface TransportPlayhead {
 	/** Last cue at or before the playhead */
 	cue?: Cue
 	nextCue?: Cue
+	/** Cue before the current one */
+	prevCue?: Cue
 }
 
 /** Playmode of a transport - REST values plus the hold states only Live Update reports */
@@ -582,7 +584,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		if (this.updateCurrentCue(playhead)) {
 			this.lastTimeVariablesUpdate = Date.now()
 			UpdatePlayheadVariableValues(this)
-			this.checkFeedbacks('cue_active', 'cue_next')
+			this.checkFeedbacks('cue_active', 'cue_next', 'track_active')
 		} else if (Date.now() - this.lastTimeVariablesUpdate >= TIME_VARIABLES_MS) {
 			this.lastTimeVariablesUpdate = Date.now()
 			UpdatePlayheadVariableValues(this)
@@ -600,10 +602,16 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 
 		const cue = cues[index]
 		const nextCue = cues[index + 1]
+		const prevCue = index > 0 ? cues[index - 1] : undefined
 		const trackName = track?.name ?? this.state.transports.find((t) => t.uid === playhead.uid)?.currentTrack?.name ?? ''
-		const changed = cue !== playhead.cue || nextCue !== playhead.nextCue || trackName !== playhead.trackName
+		const changed =
+			cue !== playhead.cue ||
+			nextCue !== playhead.nextCue ||
+			prevCue !== playhead.prevCue ||
+			trackName !== playhead.trackName
 		playhead.cue = cue
 		playhead.nextCue = nextCue
+		playhead.prevCue = prevCue
 		playhead.trackName = trackName
 		return changed
 	}
@@ -732,7 +740,15 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			this.updatePresets()
 		}
 
-		this.checkFeedbacks('connected', 'playmode', 'playing', 'cue_active', 'cue_next', 'cue_last_triggered')
+		this.checkFeedbacks(
+			'connected',
+			'playmode',
+			'playing',
+			'cue_active',
+			'cue_next',
+			'cue_last_triggered',
+			'track_active',
+		)
 	}
 
 	/** Locator for the transport option of the transport actions: Designer's current transport or a name */
@@ -817,6 +833,22 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		}
 
 		if (cue && onOtherTrack) await this.confirmTrack(transport, cue)
+	}
+
+	/**
+	 * GO / BACK: jump to the cue after (`next`) or before (`prev`) the current cue of a transport
+	 * ("current" or a name), on its current track. Returns the cue jumped to.
+	 */
+	async goToAdjacentCue(direction: 'next' | 'prev', playmode: PlayMode, transportOption: string): Promise<string> {
+		const name = this.transportName(transportOption)
+		const playhead = this.state.playheads.find((p) => p.name === name)
+		if (!playhead) throw new Error(`No live playhead for transport "${name}"`)
+		const cue = direction === 'next' ? playhead.nextCue : playhead.prevCue
+		if (!cue) {
+			throw new Error(`No ${direction === 'next' ? 'next' : 'previous'} cue on track "${playhead.trackName}"`)
+		}
+		await this.triggerCue(cue.id, playmode, name, false)
+		return cue.id
 	}
 
 	/** Wait until the playhead of the transport reports the cue's track (only for subscribed transports) */

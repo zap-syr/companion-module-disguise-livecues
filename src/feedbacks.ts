@@ -46,6 +46,13 @@ export type FeedbacksSchema = {
 			cue: string
 		}
 	}
+	track_active: {
+		type: 'boolean'
+		options: {
+			track: string
+			transport: string
+		}
+	}
 }
 
 export function UpdateFeedbacks(self: ModuleInstance): void {
@@ -76,12 +83,15 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 		allowCustom: true,
 	} as const
 
-	/** Playheads of the selected transport (or all of them); options from older buttons may lack it */
+	/**
+	 * Playheads of a transport option: any (also empty - options from older buttons may lack it),
+	 * current (selected in Designer) or a name
+	 */
 	const playheadsFor = (transport: string | undefined): TransportPlayhead[] => {
 		const name = String(transport ?? ANY_TRANSPORT).trim()
-		return name === '' || name === ANY_TRANSPORT
-			? self.state.playheads
-			: self.state.playheads.filter((p) => p.name === name)
+		if (name === '' || name === ANY_TRANSPORT) return self.state.playheads
+		const wanted = name === TRANSPORT_CURRENT ? self.state.transport : name
+		return self.state.playheads.filter((p) => p.name === wanted)
 	}
 
 	const feedbacks: CompanionFeedbackDefinitions<ModuleSchema['feedbacks']> = {
@@ -182,6 +192,26 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 			},
 			options: [{ id: 'cue', type: 'textinput', label: 'Cue', default: '1' }],
 			callback: (feedback) => self.state.lastCue !== '' && self.state.lastCue === String(feedback.options.cue).trim(),
+		},
+		track_active: {
+			name: 'Track is current (playhead)',
+			description: 'True while a transport is on this track',
+			type: 'boolean',
+			defaultStyle: {
+				bgcolor: CUE_CURRENT_COLOR,
+				color: 0xffffff,
+			},
+			options: [
+				{ id: 'track', type: 'textinput', label: 'Track (name)', default: '' },
+				{
+					...transportOption,
+					choices: [{ id: TRANSPORT_CURRENT, label: 'Current (selected in Designer)' }, ...transportChoices],
+				},
+			],
+			callback: (feedback) => {
+				const track = String(feedback.options.track).trim()
+				return playheadsFor(feedback.options.transport).some((p) => p.trackName === track)
+			},
 		},
 	}
 
