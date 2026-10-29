@@ -26,6 +26,12 @@ export type FeedbacksSchema = {
 			transport: string
 		}
 	}
+	engaged: {
+		type: 'boolean'
+		options: {
+			transport: string
+		}
+	}
 	cue_active: {
 		type: 'boolean'
 		options: {
@@ -153,6 +159,16 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 				const name = self.transportName(feedback.options.transport)
 				return self.state.connected && !!self.state.playheads.find((p) => p.name === name)?.playing
 			},
+		},
+		engaged: {
+			name: 'Transport is engaged',
+			type: 'boolean',
+			defaultStyle: {
+				bgcolor: 0x00a000,
+				color: 0xffffff,
+			},
+			options: [currentTransportOption],
+			callback: (feedback) => self.state.connected && self.engagedOf(self.transportName(feedback.options.transport)),
 		},
 		cue_active: {
 			name: 'Cue is current (playhead)',

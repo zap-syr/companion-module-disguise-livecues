@@ -396,6 +396,13 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		return parsePlaymode(this.state.transports.find((t) => t.name === transportName)?.playmode)
 	}
 
+	/** Engaged state of a transport in use: live from its playhead, else from the last REST poll */
+	engagedOf(transportName: string): boolean {
+		const playhead = this.state.playheads.find((p) => p.name === transportName)
+		if (playhead) return playhead.engaged
+		return this.state.transports.find((t) => t.name === transportName)?.engaged ?? false
+	}
+
 	/** Transport name for a feedback/action option: "current" (or empty) → the main transport */
 	transportName(option: string | undefined): string {
 		const name = String(option ?? '').trim()
@@ -575,10 +582,10 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 		playhead.speed = Number(speed) || 0
 
 		if (stateChanged) {
-			// Playmode / playing changed in Designer - apply right away (no wait for the REST poll)
+			// Playmode / playing / engaged changed in Designer - apply right away (no wait for the REST poll)
 			this.updateMainTransport()
 			UpdateVariableValues(this)
-			this.checkFeedbacks('playmode', 'playing')
+			this.checkFeedbacks('playmode', 'playing', 'engaged')
 		}
 
 		if (this.updateCurrentCue(playhead)) {
@@ -744,6 +751,7 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 			'connected',
 			'playmode',
 			'playing',
+			'engaged',
 			'cue_active',
 			'cue_next',
 			'cue_last_triggered',

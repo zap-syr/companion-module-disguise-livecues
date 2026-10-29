@@ -30,6 +30,7 @@ const PLAYHEAD_VARIABLES: [suffix: string, name: string][] = [
 	['playmode', 'playmode (Play, PlaySection, Loop, Stop, HoldSection, HoldEnd)'],
 	['playmode_short', 'playmode, short for buttons (PLAY, SECTION, LOOP, STOP, HOLD, END)'],
 	['playing', 'playing (true/false)'],
+	['engaged', 'engaged (true/false)'],
 ]
 
 export function UpdateVariableDefinitions(self: ModuleInstance): void {
@@ -130,6 +131,7 @@ function playheadValues(self: ModuleInstance): CompanionVariableValues {
 		values[`tr_${p.varId}_playmode`] = self.playmodeOf(p.name)
 		values[`tr_${p.varId}_playmode_short`] = PLAYMODE_SHORT[self.playmodeOf(p.name)]
 		values[`tr_${p.varId}_playing`] = p.playing
+		values[`tr_${p.varId}_engaged`] = p.engaged
 	}
 	// The main transport: selected in Designer when in use, else the first in use
 	const first: TransportPlayhead | undefined =

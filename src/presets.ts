@@ -399,6 +399,8 @@ const GO_CUE_TOP = 45
 /** Top of the note on the GO / BACK buttons */
 const GO_NOTE_TOP = 70
 const GO_GREEN = 0x004d00
+/** Light orange - the cue number on the GO / BACK buttons */
+const GO_CUE_COLOR = 0xffc080
 
 /**
  * GO / BACK button of a transport ("current" or a name): the label large, below it the cue it jumps
@@ -430,10 +432,11 @@ function goPreset(label: string, direction: 'next' | 'prev', transport: string):
 				elements: [
 					{ type: 'box', id: 'bg', name: 'Background', x: 0, y: 0, width: 100, height: 100, color: bgcolor },
 					textElement('title', 'GO / BACK', 0, GO_CUE_TOP, title, 70),
-					textElement('cue', 'Cue number', GO_CUE_TOP, GO_NOTE_TOP - GO_CUE_TOP, `CUE ${cueVar}`, 50, {
+					textElement('cue', 'Cue number', GO_CUE_TOP, GO_NOTE_TOP - GO_CUE_TOP, `CUE ${cueVar}`, 100, {
+						color: GO_CUE_COLOR,
 						enabled: expr(`${cueVar} != ''`),
 					}),
-					textElement('note', 'Note', GO_NOTE_TOP, 100 - GO_NOTE_TOP, noteVar, 50, {
+					textElement('note', 'Note', GO_NOTE_TOP, 100 - GO_NOTE_TOP, noteVar, 80, {
 						color: LABEL_GREY,
 						enabled: expr(`${noteVar} != ''`),
 					}),
@@ -465,6 +468,23 @@ function addGoButtons(
 	presets[`${idPrefix}_go`] = goPreset(label, 'next', transport)
 	presets[`${idPrefix}_back`] = goPreset(label, 'prev', transport)
 	return [`${idPrefix}_go`, `${idPrefix}_back`]
+}
+
+/** Engage toggle of a transport ("current" or a name): red DISENGAGED, green ENGAGED; returns its id */
+function addEngageButton(
+	presets: CompanionPresetDefinitions<ModuleSchema>,
+	idPrefix: string,
+	transport: string,
+): string {
+	const id = `${idPrefix}_engaged`
+	presets[id] = {
+		type: 'simple',
+		name: 'Engage / disengage' + (transport === TRANSPORT_CURRENT ? '' : ` (${transport})`),
+		style: { text: 'DISENGAGED', size: '14', color: WHITE, bgcolor: RED },
+		steps: [{ down: [{ actionId: 'set_engaged', options: { mode: 'toggle', transport } }], up: [] }],
+		feedbacks: [{ feedbackId: 'engaged', options: { transport }, style: { text: 'ENGAGED', bgcolor: GREEN } }],
+	}
+	return id
 }
 
 /** Top of the cue count on the track buttons */
@@ -813,6 +833,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 			presets: [
 				...addGoButtons(presets, label, 'transport', TRANSPORT_CURRENT),
 				...addTransportButtons('transport', TRANSPORT_CURRENT, ''),
+				addEngageButton(presets, 'transport', TRANSPORT_CURRENT),
 			],
 		},
 	]
@@ -845,7 +866,12 @@ export function UpdatePresets(self: ModuleInstance): void {
 			name: `Transport - ${transport.name}`,
 			description: `Act on transport "${transport.name}"`,
 			type: 'simple',
-			presets: [`${prefix}_status`, ...addGoButtons(presets, label, prefix, transport.name), ...ids],
+			presets: [
+				`${prefix}_status`,
+				...addGoButtons(presets, label, prefix, transport.name),
+				...ids,
+				addEngageButton(presets, prefix, transport.name),
+			],
 		})
 	}
 

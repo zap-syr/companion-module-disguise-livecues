@@ -18,6 +18,7 @@ export type ActionsSchema = {
 	go_to_timecode: { options: { timecode: string; ignoreTags: boolean; transport: string; playmode: PlaymodeOption } }
 	set_playmode: { options: { playmode: SetPlaymodeOption; transport: string } }
 	return_to_start: { options: { transport: string } }
+	set_engaged: { options: { mode: 'toggle' | 'engage' | 'disengage'; transport: string } }
 	refresh: { options: Record<string, never> }
 }
 
@@ -259,6 +260,31 @@ export function UpdateActions(self: ModuleInstance): void {
 			name: 'Return to start',
 			options: [transportOption],
 			callback: async (event) => run(async () => self.getApi().returnToStart(locator(event.options.transport))),
+		},
+		set_engaged: {
+			name: 'Set engaged',
+			description: 'Engage, disengage or toggle a transport (each transport of a multi-transport separately)',
+			options: [
+				{
+					id: 'mode',
+					type: 'dropdown',
+					label: 'Mode',
+					choices: [
+						{ id: 'toggle', label: 'Toggle' },
+						{ id: 'engage', label: 'Engage' },
+						{ id: 'disengage', label: 'Disengage' },
+					],
+					default: 'toggle',
+				},
+				transportOption,
+			],
+			callback: async (event) => {
+				const engaged =
+					event.options.mode === 'toggle'
+						? !self.engagedOf(self.transportName(event.options.transport))
+						: event.options.mode === 'engage'
+				await run(async () => self.getApi().setEngaged(engaged, locator(event.options.transport)))
+			},
 		},
 		refresh: {
 			name: 'Refresh cue list',

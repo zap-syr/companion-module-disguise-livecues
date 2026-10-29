@@ -180,6 +180,10 @@ export class DisguiseApi {
 		await this.simple('returntostart', transport)
 	}
 
+	async setEngaged(engaged: boolean, transport: Locator = {}): Promise<void> {
+		await this.request('POST', 'transport/engaged', { transports: [{ transport, engaged }] })
+	}
+
 	async goToCue(cue: string, playmode?: PlayMode, allowGlobalJump = false, transport: Locator = {}): Promise<void> {
 		await this.withPlaymode('gototag', transport, { type: 'CUE', value: cue, allowGlobalJump }, playmode)
 	}
