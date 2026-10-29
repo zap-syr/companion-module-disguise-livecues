@@ -111,7 +111,7 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 					label: 'Playmode',
 					choices: [
 						{ id: 'Play', label: 'Play' },
-						{ id: 'PlaySection', label: 'Play to end of section' },
+						{ id: 'PlaySection', label: 'Play to end of section (also while holding at the end)' },
 						{ id: 'Loop', label: 'Loop section' },
 						{ id: 'Stop', label: 'Stop' },
 						{ id: 'HoldSection', label: 'Hold section (end of section reached)' },
@@ -122,9 +122,13 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 				},
 				currentTransportOption,
 			],
-			callback: (feedback) =>
-				self.state.connected &&
-				self.playmodeOf(self.transportName(feedback.options.transport)) === feedback.options.playmode,
+			callback: (feedback) => {
+				if (!self.state.connected) return false
+				const playmode = self.playmodeOf(self.transportName(feedback.options.transport))
+				// Play to end of section turns into Hold section at the section end - keep that button lit
+				if (feedback.options.playmode === 'PlaySection' && playmode === 'HoldSection') return true
+				return playmode === feedback.options.playmode
+			},
 		},
 		playing: {
 			name: 'Transport is playing',
