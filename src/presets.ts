@@ -3,12 +3,15 @@ import type ModuleInstance from './main.js'
 import { TRANSPORT_AUTO, TRANSPORT_CURRENT, transportVarId, type Cue } from './main.js'
 import { ANY_TRANSPORT, CUE_CURRENT_COLOR, CUE_NEXT_COLOR } from './feedbacks.js'
 import { TRANSPORT_ICONS } from './icons.js'
-import type {
-	CompanionButtonStepActions,
-	CompanionPresetDefinitions,
-	CompanionPresetGroup,
-	CompanionPresetSection,
-	SomeButtonGraphicsElement,
+import {
+	ButtonGraphicsDecorationType,
+	type ButtonGraphicsCanvasElement,
+	type ButtonGraphicsTextElement,
+	type CompanionButtonStepActions,
+	type CompanionPresetDefinitions,
+	type CompanionPresetGroup,
+	type CompanionPresetSection,
+	type SomeButtonGraphicsElement,
 } from '@companion-module/base'
 
 const WHITE = 0xffffff
@@ -22,6 +25,8 @@ const NOTE_HEIGHT = 65
 /** Height of the transport name strip on the top of cue buttons bound to a transport */
 const TRANSPORT_LABEL_HEIGHT = 18
 const LABEL_GREY = 0xbbbbbb
+/** Status buttons without the top bar / border, so the text gets the whole button */
+const STATUS_CANVAS: ButtonGraphicsCanvasElement = { decoration: ButtonGraphicsDecorationType.None }
 
 type PresetDefinition = CompanionPresetDefinitions<ModuleSchema>[string]
 
@@ -182,6 +187,179 @@ function cuePreset(label: string, cue: Cue, transport?: string): PresetDefinitio
 						style: { bgcolor: CUE_CURRENT_COLOR, color: WHITE },
 					},
 				],
+			},
+		],
+	}
+}
+
+/** Bottom of the cue number on the status buttons when a note is shown below it */
+const STATUS_CUE_BOTTOM = 50
+/** Top of the small grey detail line on the bottom of the status buttons */
+const STATUS_DETAIL_TOP = 65
+
+/** Centered white text element of the status buttons */
+function textElement(
+	id: string,
+	name: string,
+	y: number,
+	height: number,
+	text: string,
+	fontsize: number,
+	extra: Partial<ButtonGraphicsTextElement> = {},
+): ButtonGraphicsTextElement {
+	return {
+		type: 'text',
+		id,
+		name,
+		x: 0,
+		y,
+		width: 100,
+		height,
+		text,
+		fontsize,
+		fontsizeAllowShrink: true,
+		color: WHITE,
+		halign: 'center',
+		valign: 'center',
+		...extra,
+	}
+}
+
+/** Background and the small grey header on the top left of the status buttons */
+function statusBase(header: string, color = GREY): SomeButtonGraphicsElement[] {
+	return [
+		{ type: 'box', id: 'bg', name: 'Background', x: 0, y: 0, width: 100, height: 100, color },
+		textElement('header', 'Header', 0, TRANSPORT_LABEL_HEIGHT, header, 100, {
+			x: 4,
+			width: 96,
+			color: LABEL_GREY,
+			halign: 'left',
+			valign: 'top',
+		}),
+	]
+}
+
+/**
+ * Status button with a header, a large value and a small grey detail line below it
+ * (layered, without decoration), plus a simple fallback for Bitfocus Buttons.
+ */
+function statusPreset(
+	name: string,
+	header: string,
+	value: string,
+	detail: string,
+	steps: CompanionButtonStepActions<ModuleSchema>[],
+): PresetDefinition {
+	return {
+		type: 'alternatives',
+		variants: [
+			{
+				type: 'layered',
+				name,
+				canvas: STATUS_CANVAS,
+				elements: [
+					...statusBase(header),
+					textElement('value', 'Value', TRANSPORT_LABEL_HEIGHT, STATUS_DETAIL_TOP - TRANSPORT_LABEL_HEIGHT, value, 50),
+					textElement('detail', 'Detail', STATUS_DETAIL_TOP, 100 - STATUS_DETAIL_TOP, detail, 50, {
+						color: LABEL_GREY,
+					}),
+				],
+				steps,
+				feedbacks: [],
+			},
+			{
+				type: 'simple',
+				name,
+				style: { text: `${header}\n${value}\n${detail}`, size: 'auto', color: WHITE, bgcolor: GREY },
+				steps,
+				feedbacks: [],
+			},
+		],
+	}
+}
+
+/** Connection status: "DISGUISE" header and OFFLINE on red, ONLINE on green while connected */
+function connectionPreset(steps: CompanionButtonStepActions<ModuleSchema>[]): PresetDefinition {
+	const name = 'Connection status'
+	return {
+		type: 'alternatives',
+		variants: [
+			{
+				type: 'layered',
+				name,
+				canvas: STATUS_CANVAS,
+				elements: [
+					...statusBase('DISGUISE', RED),
+					textElement('state', 'State', TRANSPORT_LABEL_HEIGHT, 100 - TRANSPORT_LABEL_HEIGHT, 'OFFLINE', 50),
+				],
+				steps,
+				feedbacks: [
+					{
+						feedbackId: 'connected',
+						options: {},
+						styleOverrides: [
+							{ elementId: 'bg', elementProperty: 'color', override: { isExpression: false, value: GREEN } },
+							{ elementId: 'state', elementProperty: 'text', override: { isExpression: false, value: 'ONLINE' } },
+						],
+					},
+				],
+			},
+			{
+				type: 'simple',
+				name,
+				style: { text: 'DISGUISE\nOFFLINE', size: 'auto', color: WHITE, bgcolor: RED },
+				steps,
+				feedbacks: [{ feedbackId: 'connected', options: {}, style: { bgcolor: GREEN, text: 'DISGUISE\nONLINE' } }],
+			},
+		],
+	}
+}
+
+/**
+ * Status button of the current ("now") or next cue of the selected transport: a small header,
+ * "CUE <n>" and its note. Expressions switch the layout when the cue has no note, and show a dash
+ * when there is no cue.
+ */
+function statusCuePreset(label: string, kind: 'now' | 'next'): PresetDefinition {
+	const prefix = kind === 'now' ? 'current' : 'next'
+	const header = kind === 'now' ? 'NOW' : 'NEXT'
+	const name = kind === 'now' ? 'Current cue (playhead of the selected transport)' : 'Next cue (selected transport)'
+	const cueVar = `$(${label}:${prefix}_cue)`
+	const noteVar = `$(${label}:${prefix}_cue_note)`
+	const cueText = `CUE ${cueVar}`
+	const top = TRANSPORT_LABEL_HEIGHT
+
+	const expr = (value: string) => ({ isExpression: true, value }) as const
+	const hasCue = `${cueVar} != ''`
+	const hasNote = `${noteVar} != ''`
+
+	const elements: SomeButtonGraphicsElement[] = [
+		...statusBase(header),
+		textElement('cue', 'Cue number (with note)', top, STATUS_CUE_BOTTOM - top, cueText, 50, {
+			enabled: expr(`${hasCue} && ${hasNote}`),
+		}),
+		textElement('note', 'Note', STATUS_CUE_BOTTOM, 100 - STATUS_CUE_BOTTOM, noteVar, 60, { enabled: expr(hasNote) }),
+		textElement('cue_only', 'Cue number (no note)', top, 100 - top, cueText, 50, {
+			enabled: expr(`${hasCue} && ${noteVar} == ''`),
+		}),
+		textElement('no_cue', 'No cue', top, 100 - top, '—', 50, { enabled: expr(`${cueVar} == ''`) }),
+	]
+
+	return {
+		type: 'alternatives',
+		variants: [
+			{ type: 'layered', name, canvas: STATUS_CANVAS, elements, steps: [], feedbacks: [] },
+			{
+				type: 'simple',
+				name,
+				style: {
+					text: `${header}\n${cueText}\n${noteVar}`,
+					size: 'auto',
+					color: WHITE,
+					bgcolor: GREY,
+				},
+				steps: [],
+				feedbacks: [],
 			},
 		],
 	}
@@ -359,67 +537,32 @@ export function UpdatePresets(self: ModuleInstance): void {
 	}
 
 	// --- Status ---
-	presets['status_track'] = {
-		type: 'simple',
-		name: 'Current track and playmode',
-		style: {
-			text: `$(${label}:track)\n$(${label}:playmode)`,
-			size: 'auto',
-			color: WHITE,
-			bgcolor: GREY,
-		},
-		steps: [{ down: [{ actionId: 'refresh', options: {} }], up: [] }],
-		feedbacks: [],
-	}
-	presets['status_connection'] = {
-		type: 'simple',
-		name: 'Connection status',
-		style: { text: 'DISGUISE\nOFFLINE', size: 'auto', color: WHITE, bgcolor: RED },
-		steps: [{ down: [{ actionId: 'refresh', options: {} }], up: [] }],
-		feedbacks: [{ feedbackId: 'connected', options: {}, style: { bgcolor: GREEN, text: 'DISGUISE\nONLINE' } }],
-	}
-
-	presets['status_current_cue'] = {
-		type: 'simple',
-		name: 'Current cue (playhead of the selected transport)',
-		style: {
-			text: `NOW $(${label}:current_cue)\n$(${label}:current_cue_note)\n$(${label}:current_time)`,
-			size: 'auto',
-			color: WHITE,
-			bgcolor: GREY,
-		},
-		steps: [],
-		feedbacks: [],
-	}
-	presets['status_next_cue'] = {
-		type: 'simple',
-		name: 'Next cue (selected transport)',
-		style: {
-			text: `NEXT $(${label}:next_cue)\n$(${label}:next_cue_note)`,
-			size: 'auto',
-			color: WHITE,
-			bgcolor: GREY,
-		},
-		steps: [],
-		feedbacks: [],
-	}
-	presets['status_refresh'] = {
-		type: 'simple',
-		name: 'Refresh cue list',
-		style: {
-			text: `REFRESH CUES\n$(${label}:cue_list_updated)`,
-			size: 'auto',
-			color: WHITE,
-			bgcolor: GREY,
-		},
-		steps: [{ down: [{ actionId: 'refresh', options: {} }], up: [] }],
-		feedbacks: [],
-	}
+	const refreshSteps: CompanionButtonStepActions<ModuleSchema>[] = [
+		{ down: [{ actionId: 'refresh', options: {} }], up: [] },
+	]
+	presets['status_track'] = statusPreset(
+		'Current track and playmode',
+		'TRACK',
+		`$(${label}:track)`,
+		`$(${label}:playmode)`,
+		refreshSteps,
+	)
+	presets['status_connection'] = connectionPreset(refreshSteps)
+	presets['status_current_cue'] = statusCuePreset(label, 'now')
+	presets['status_next_cue'] = statusCuePreset(label, 'next')
+	presets['status_refresh'] = statusPreset(
+		'Refresh cue list',
+		'CUE LIST',
+		'REFRESH',
+		`$(${label}:cue_list_updated)`,
+		refreshSteps,
+	)
 
 	const structure: CompanionPresetSection[] = [
 		{
 			id: 'cues',
-			name: 'Cues',
+			// Named like the per-transport sections: these cue buttons use the Auto transport
+			name: 'Cues - Auto',
 			definitions: cueGroups,
 		},
 		...transportCueSections,
