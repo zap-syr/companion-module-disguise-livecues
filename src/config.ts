@@ -14,16 +14,30 @@ export const DEFAULT_POLL_INTERVAL = 2000
 export const DEFAULT_TIMEOUT = 2000
 export const DEFAULT_CUE_UPDATE_INTERVAL = 3000
 
+/**
+ * Full-width section header. Companion renders static-text full width only when the value is multi-line
+ * (or over 100 chars), and the value is Markdown - so the title goes into the value as a heading.
+ * The tooltip shows on hover over the header (no help icon is drawn for full-width text).
+ */
+function sectionHeader(id: string, title: string, tooltip: string, divider = true): SomeCompanionConfigField {
+	return {
+		type: 'static-text',
+		width: 12,
+		id,
+		label: '',
+		tooltip,
+		value: `${divider ? '---\n\n' : ''}#### ${title}\n`,
+	}
+}
+
 export function GetConfigFields(): SomeCompanionConfigField[] {
 	return [
-		{
-			type: 'static-text',
-			width: 12,
-			id: 'info',
-			label: 'Information',
-			value:
-				'Connects to the Disguise Designer Session REST API and Live Update (director machine). Cues and notes of all tracks are read automatically and turned into presets, one group per track.',
-		},
+		sectionHeader(
+			'connectionHeader',
+			'Connection',
+			'Connects to the Disguise Designer Session REST API and Live Update on the director machine.',
+			false,
+		),
 		{
 			type: 'textinput',
 			id: 'host',
@@ -41,26 +55,11 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			min: 1,
 			max: 65535,
 		},
-		{
-			type: 'number',
-			id: 'pollInterval',
-			width: 6,
-			label: 'Polling interval (ms) - transports in use and reconnect',
-			tooltip:
-				'How often the list of transports in use (single / multi-transport) and their setlists are read, and the retry interval while Designer is unreachable. Playmode and playhead come live through Live Update; the cue list has its own interval below.',
-			default: DEFAULT_POLL_INTERVAL,
-			min: 250,
-			max: 60000,
-		},
-		{
-			type: 'number',
-			id: 'timeout',
-			width: 6,
-			label: 'Request timeout (ms)',
-			default: DEFAULT_TIMEOUT,
-			min: 200,
-			max: 30000,
-		},
+		sectionHeader(
+			'cuesHeader',
+			'Cue list & presets',
+			'Cues and notes of all tracks are read automatically and turned into presets, one group per track.',
+		),
 		{
 			type: 'checkbox',
 			id: 'cueAutoUpdate',
@@ -90,6 +89,29 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			tooltip:
 				'With a multi-transport, add a "Cues - <transport>" preset section per transport whose cue buttons always trigger and light on that transport. Turn off for large projects to keep the preset list short.',
 			default: true,
+		},
+		sectionHeader('advancedHeader', 'Advanced', 'The defaults fit most setups.'),
+		{
+			type: 'number',
+			id: 'pollInterval',
+			width: 6,
+			label: 'Polling interval (ms)',
+			tooltip:
+				'How often the list of transports in use (single / multi-transport) and their setlists are read, and the retry interval while Designer is unreachable. Playmode and playhead come live through Live Update; the cue list has its own interval above.',
+			default: DEFAULT_POLL_INTERVAL,
+			min: 250,
+			max: 60000,
+		},
+		{
+			type: 'number',
+			id: 'timeout',
+			width: 6,
+			label: 'Request timeout (ms)',
+			tooltip:
+				'How long to wait for Designer to answer a REST request (polling and commands) before treating it as unreachable. Increase for heavy projects if you see false timeouts. Does not affect Live Update.',
+			default: DEFAULT_TIMEOUT,
+			min: 200,
+			max: 30000,
 		},
 	]
 }
